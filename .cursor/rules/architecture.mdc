@@ -1,0 +1,19 @@
+---
+description: Arquitectura obligatoria para ExpenseFlow
+globs: ["src/**/*.{cs,csproj}"]
+alwaysApply: true
+---
+
+- Mantener arquitectura por capas:
+  - Domain: entidades y value objects
+  - Application: casos de uso e interfaces
+  - Infrastructure: EF Core, OCR providers, filesystem
+  - Worker: ejecución periódica
+  - Api: endpoints HTTP
+- Domain no depende de Infrastructure.
+- Application no depende de Worker ni Api.
+- No introducir librerías innecesarias.
+- No mezclar lógica de OCR con controllers.
+- Toda integración externa debe pasar por una interfaz en Application.
+- El acceso a archivos debe abstraerse detrás de servicios, no quedar repartido por toda la solución.
+- El almacenamiento de OCR crudo debe preservarse para depuración y evolución futura.

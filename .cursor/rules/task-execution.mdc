@@ -1,0 +1,13 @@
+---
+description: Ejecución de tasks
+globs: ["docs/tasks/*.md","src/**/*"]
+alwaysApply: true
+---
+
+- Implementar solo una task por cambio.
+- Leer primero la task y sus criterios de aceptación.
+- No ampliar alcance sin documentarlo explícitamente.
+- Si una task requiere cambio arquitectónico, actualizar `docs/architecture.md`.
+- Si una task cambia setup, actualizar `README.md`.
+- Si una task queda parcial, dejar claramente qué falta y por qué.
+- Priorizar cambios pequeños, verificables y fáciles de revisar.

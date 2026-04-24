@@ -1,0 +1,16 @@
+---
+description: Estilo de código backend
+globs: ["src/**/*.{cs,csproj}","tests/**/*.cs"]
+alwaysApply: true
+---
+
+- Preferir clases pequeñas y nombres explícitos.
+- Métodos cortos y con una única responsabilidad.
+- Usar CancellationToken en operaciones async.
+- Validar inputs de archivos y rutas.
+- Agregar logging estructurado en procesos batch.
+- No capturar excepciones genéricas sin log útil.
+- Evitar comentarios obvios; privilegiar código claro.
+- No acoplar DTOs externos a entidades de dominio.
+- Mantener defaults y valores mágicos en options/configuración.
+- Todo cambio debe dejar el proyecto compilable.
