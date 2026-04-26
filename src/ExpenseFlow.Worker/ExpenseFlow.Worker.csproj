@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-ExpenseFlow.Worker-28e0b8a0-650d-49ed-870d-f6d4596e3033</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.15" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ExpenseFlow.Application\ExpenseFlow.Application.csproj" />
+    <ProjectReference Include="..\ExpenseFlow.Infrastructure\ExpenseFlow.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

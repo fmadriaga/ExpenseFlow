@@ -1,6 +1,6 @@
 # TASK-001 Bootstrap solution
 
-status: ready
+status: done
 owner: backend
 priority: high
 
