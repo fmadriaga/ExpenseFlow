@@ -1,9 +1,14 @@
+using ExpenseFlow.Application.Abstractions;
+using ExpenseFlow.Application.Options;
 using ExpenseFlow.Infrastructure.Data;
+using ExpenseFlow.Infrastructure.Options;
+using ExpenseFlow.Infrastructure.Scanning;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 namespace ExpenseFlow.Infrastructure;
 
@@ -26,6 +31,23 @@ public static class DependencyInjection
             hostEnvironment);
         return services.AddDbContext<ExpenseFlowDbContext>(options =>
             options.UseSqlite(connectionString));
+    }
+
+    /// <summary>
+    /// Registra <see cref="IFileScanner"/>, <see cref="IOptions{StorageOptions}"/>
+    /// y ajuste de rutas a absolutas respecto al <c>ContentRoot</c> del host.
+    /// </summary>
+    public static IServiceCollection AddFileScanning(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services
+            .AddOptions<StorageOptions>()
+            .Bind(
+                configuration.GetSection(StorageOptions.SectionName));
+        services.AddSingleton<IPostConfigureOptions<StorageOptions>, PostConfigureStoragePaths>();
+        services.AddScoped<IFileScanner, FileScanner>();
+        return services;
     }
 
     private static string ResolveConnectionString(

@@ -1,6 +1,6 @@
 # TASK-003 File scanner
 
-status: ready
+status: done
 owner: backend
 priority: high
 
@@ -35,3 +35,14 @@ sin procesar repetidamente los mismos archivos.
 - Centralizar rutas en options/configuración
 - Mantener el scanner desacoplado del OCR
 - El resultado del scanner debe ser reutilizable por el Worker
+
+## Cierre documental (Docs Keeper)
+
+- Estado: `status: done` (cerrada tras aprobación del Reviewer).
+- Resumen: `IFileScanner` / `ScanResult` / `StorageOptions` en Application; `FileScanner` y
+  `PostConfigureStoragePaths` en Infrastructure; `AddFileScanning` + sección `Storage` en el
+  Worker; pruebas de integración para extensiones, archivo vacío y duplicado por `FileHash`.
+
+**Pendiente en tasks futuras (no es omisión de TASK-003):** OCR (`IReceiptOcrProvider`), mover
+archivos a `processed`/`error`, loop de job completo, deduplicación dentro del mismo lote si se
+requiere, y uso de rutas `Processed`/`Error` en código.

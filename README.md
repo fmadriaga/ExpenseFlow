@@ -17,7 +17,7 @@ Procesamiento de tickets (OCR) desde una carpeta sincronizada, con persistencia 
 | `src/ExpenseFlow.Worker` | Proceso por lotes en segundo plano |
 | `src/ExpenseFlow.Api` | Host HTTP para evolución futura |
 | `docs/` | Visión, arquitectura y tasks |
-| `tests/ExpenseFlow.IntegrationTests` | Pruebas de integración (persistencia) |
+| `tests/ExpenseFlow.IntegrationTests` | Pruebas (persistencia SQLite, escáner de inbox) |
 | `data/` | Datos locales: base SQLite `expenseflow.db` (generada; no commitear) |
 | `storage/familia/` (subcarpetas `inbox`, `processed`, `error`) | Inbox y salidas de archivos (según arquitectura) |
 
@@ -42,12 +42,22 @@ dotnet ef database update --project src/ExpenseFlow.Infrastructure --startup-pro
 
 El Worker aplica `Migrate()` al arrancar para mantener el esquema al día en desarrollo.
 
+## Rutas de almacenamiento y escáner (TASK-003)
+
+- La sección `Storage` en `src/ExpenseFlow.Worker/appsettings.json` define por defecto (relativas al
+  `ContentRoot` del Worker) `Inbox`, `Processed` y `Error` bajo `../../storage/familia/...`.
+- El `IFileScanner` usa solo la ruta de **inbox** para listar y filtrar archivos; *processed* y
+  *error* se reservan a tasks de movimiento de archivos. Sin OCR en esta fase.
+- Puedes sobrescribir rutas (absoluta o relativa al proyecto Worker) o seguir los valores
+  predeterminados, coherentes con la estructura `storage/familia/...` del repositorio.
+- La carpeta de **inbox** debe existir para procesar ficheros (p. ej. creada por sincronización
+  o manualmente); si no existe, el escáner registra una advertencia y no devuelve candidatos.
+
 ## Ejecutar
 
-- Worker: `dotnet run --project src/ExpenseFlow.Worker` (migración + `HostedService` mínimo)
+- Worker: `dotnet run --project src/ExpenseFlow.Worker` (migración, escáner al arranque,
+  luego el `BackgroundService` de demostración; sin OCR aún)
 - API: `dotnet run --project src/ExpenseFlow.Api`
-
-Aún no hay lógica de negocio de OCR; el arranque del Worker valida persistencia y el pipeline batch vendrá en tasks posteriores.
 
 ## Referencia de capas
 

@@ -44,6 +44,19 @@ emplazadas en `Infrastructure/Migrations` (`ExpenseFlowDbContext`).
   requerido en el corte actual).
 - **Entidades (Domain):** `Document` (campos: `FilePath`, `FileHash`, `RawJson` para
   auditoría OCR, `OcrStatus`, `ErrorMessage`, `CreatedAt`), `DocumentLine`, `ProcessingJob`.
+- **Escáner de inbox (TASK-003):** `IFileScanner` en `ExpenseFlow.Application.Abstractions` con
+  DTO `ScanResult` (ruta, `FileHash` SHA-256 hex, `IsAlreadyInDatabase`). La implementación
+  `FileScanner` en `ExpenseFlow.Infrastructure.Scanning` enumera solo el primer nivel de la
+  carpeta inbox, filtra extensiones (`jpg`, `jpeg`, `png`, `pdf`) sin distinguir mayúsculas,
+  ignora archivos vacíos, calcula hash y consulta `Document.FileHash` vía
+  `ExpenseFlowDbContext` para excluir duplicados. Rutas: `StorageOptions` (sección
+  `Storage` en config: `Inbox`, `Processed`, `Error`), resueltas a absolutas con
+  `IPostConfigureOptions<StorageOptions>`; registro: `AddFileScanning` (además de
+  `AddPersistence`). El método `GetPendingFilesToProcessAsync` devuelve solo rutas cuyo
+  contenido tiene un hash SHA-256 que **no** coincide con ningún `Document.FileHash` ya
+  guardado; si coincide, el archivo se descarta para reproceso y queda trazado en log.
+- **Application (TASK-003):** contrato `IFileScanner`, DTO `ScanResult`, POCO `StorageOptions`
+  (sección de configuración `Storage`).
 
 Tablas:
 - `Documents`
