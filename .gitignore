@@ -482,3 +482,7 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# ExpenseFlow: base SQLite generada en desarrollo
+/data/expenseflow.db
+data/expenseflow.db

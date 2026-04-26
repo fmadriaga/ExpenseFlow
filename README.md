@@ -5,6 +5,7 @@ Procesamiento de tickets (OCR) desde una carpeta sincronizada, con persistencia 
 ## Requisitos
 
 - [.NET 9 SDK](https://dotnet.microsoft.com/download) (misma línea major que el target de los proyectos)
+- [Herramienta `dotnet-ef`](https://learn.microsoft.com/ef/core/cli/dotnet) (para migraciones: `dotnet tool install --global dotnet-ef` o manifiesto local bajo `.config/`)
 
 ## Estructura del repositorio
 
@@ -12,26 +13,41 @@ Procesamiento de tickets (OCR) desde una carpeta sincronizada, con persistencia 
 | --- | --- |
 | `src/ExpenseFlow.Domain` | Entidades y reglas de dominio |
 | `src/ExpenseFlow.Application` | Casos de uso, contratos, DTOs internos |
-| `src/ExpenseFlow.Infrastructure` | EF Core, integraciones, filesystem |
+| `src/ExpenseFlow.Infrastructure` | EF Core (`ExpenseFlowDbContext`, migraciones), integraciones, filesystem |
 | `src/ExpenseFlow.Worker` | Proceso por lotes en segundo plano |
 | `src/ExpenseFlow.Api` | Host HTTP para evolución futura |
 | `docs/` | Visión, arquitectura y tasks |
-| `tests/` | Pruebas (aún no hay proyectos) |
-| `data/` | Datos locales (p. ej. base SQLite) |
+| `tests/ExpenseFlow.IntegrationTests` | Pruebas de integración (persistencia) |
+| `data/` | Datos locales: base SQLite `expenseflow.db` (generada; no commitear) |
 | `storage/familia/` (subcarpetas `inbox`, `processed`, `error`) | Inbox y salidas de archivos (según arquitectura) |
 
-## Compilar
+## Compilar y probar
 
 ```bash
 dotnet build ExpenseFlow.sln -c Release
+dotnet test tests/ExpenseFlow.IntegrationTests/ExpenseFlow.IntegrationTests.csproj
 ```
 
-## Ejecutar (placeholder)
+## Base de datos (SQLite)
 
-- Worker: `dotnet run --project src/ExpenseFlow.Worker`
+- Fichero por defecto: `data/expenseflow.db` (dos niveles arriba del `ContentRoot` del Worker: raíz del repo). El directorio `data` se crea si no existe.
+- El fichero de base generado se ignora en el control de versiones (vía `.gitignore`); no lo subas al repositorio.
+- Override opcional: cadena completa SQLite o ruta a fichero (sin `=`) en `ConnectionStrings:ExpenseFlow` (ver `appsettings` o variables de entorno bajo el prefijo de configuración estándar).
+- Migraciones: proyecto de modelos `src/ExpenseFlow.Infrastructure`, host de arranque `src/ExpenseFlow.Worker`:
+
+```bash
+dotnet ef migrations add Nombre --project src/ExpenseFlow.Infrastructure --startup-project src/ExpenseFlow.Worker
+dotnet ef database update --project src/ExpenseFlow.Infrastructure --startup-project src/ExpenseFlow.Worker
+```
+
+El Worker aplica `Migrate()` al arrancar para mantener el esquema al día en desarrollo.
+
+## Ejecutar
+
+- Worker: `dotnet run --project src/ExpenseFlow.Worker` (migración + `HostedService` mínimo)
 - API: `dotnet run --project src/ExpenseFlow.Api`
 
-Aún no hay lógica de negocio ni integración OCR; el arranque valida el host mínimo.
+Aún no hay lógica de negocio de OCR; el arranque del Worker valida persistencia y el pipeline batch vendrá en tasks posteriores.
 
 ## Referencia de capas
 

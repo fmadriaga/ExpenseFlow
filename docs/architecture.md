@@ -32,9 +32,20 @@ Implementación inicial en Infrastructure:
 - `AzureDocumentIntelligenceReceiptProvider`
 
 ### Storage
-SQLite mediante EF Core.
+SQLite mediante EF Core. El fichero de base de datos local por defecto vive en
+`data/expenseflow.db` (ruta resuelta desde el host; configurable con
+`ConnectionStrings:ExpenseFlow`). Al arranque, el Worker aplica las migraciones
+emplazadas en `Infrastructure/Migrations` (`ExpenseFlowDbContext`).
 
-Tablas previstas:
+- **Contexto y DI:** `ExpenseFlowDbContext` (namespace `ExpenseFlow.Infrastructure.Data`) se
+  configura con SQLite. El registro ocurre vía
+  `ExpenseFlow.Infrastructure.DependencyInjection.AddPersistence` (`AddDbContext`); el
+  `Program` del **Worker** invoca ese método. La **Api** no registra aún el DbContext (no
+  requerido en el corte actual).
+- **Entidades (Domain):** `Document` (campos: `FilePath`, `FileHash`, `RawJson` para
+  auditoría OCR, `OcrStatus`, `ErrorMessage`, `CreatedAt`), `DocumentLine`, `ProcessingJob`.
+
+Tablas:
 - `Documents`
 - `DocumentLines`
 - `ProcessingJobs`

@@ -1,6 +1,6 @@
 # TASK-002 SQLite persistence
 
-status: ready
+status: done
 owner: backend
 priority: high
 
@@ -35,3 +35,10 @@ evitar duplicados por hash y preservar resultados OCR para análisis posterior.
 - Guardar `RawJson` del OCR en el documento
 - Incluir `FileHash` para deduplicación
 - Dejar `OcrStatus` y `ErrorMessage` para trazabilidad
+
+## Cierre documental (Docs Keeper)
+
+- Estado: cerrada con `status: done` tras aprobación del Reviewer.
+- Resumen: persistencia SQLite con `ExpenseFlowDbContext`, entidades en `Domain`, migración `InitialCreate`, registro `AddPersistence` en el Worker, prueba de integración en `tests/ExpenseFlow.IntegrationTests` (inserción/lectura de `Document`).
+
+**Pendiente en tasks futuras (no es omisión de TASK-002):** repositorios/casos de uso en Application, índice único opcional en `FileHash` para deduplicación en capa de datos, registro del DbContext en `Api` si aplica, escaneo OCR y flujo de archivos.
