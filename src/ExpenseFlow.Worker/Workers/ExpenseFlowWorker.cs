@@ -247,6 +247,21 @@ public sealed class ExpenseFlowWorker : BackgroundService
 
             await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
+        catch (DbUpdateException dbEx) when (IsSqliteUniqueConstraintOnDocumentsFileHash(dbEx))
+        {
+            db.ChangeTracker.Clear();
+            _logger.LogWarning(
+                "Duplicate file hash (unique index); document already in database. JobId: {JobId}, FullPath: {FullPath}, FileHash: {FileHash}",
+                jobId,
+                scan.FullPath,
+                scan.FileHash);
+            return await TryMoveDuplicateInboxToProcessedOrFailAsync(
+                jobId,
+                mover,
+                scan,
+                cancellationToken)
+                .ConfigureAwait(false);
+        }
         catch (Exception ex)
         {
             _logger.LogError(
@@ -352,6 +367,7 @@ public sealed class ExpenseFlowWorker : BackgroundService
         Exception ex,
         CancellationToken cancellationToken)
     {
+        var duplicateOnFailureSave = false;
         try
         {
             var errorDoc = new Document
@@ -375,6 +391,41 @@ public sealed class ExpenseFlowWorker : BackgroundService
             db.Documents.Add(errorDoc);
             await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
+        catch (DbUpdateException dbEx) when (IsSqliteUniqueConstraintOnDocumentsFileHash(dbEx))
+        {
+            db.ChangeTracker.Clear();
+            _logger.LogWarning(
+                "Duplicate file hash (unique index) while persisting failure document; record already exists. JobId: {JobId}, FullPath: {FullPath}, FileHash: {FileHash}",
+                jobId,
+                scan.FullPath,
+                scan.FileHash);
+            duplicateOnFailureSave = true;
+            if (File.Exists(scan.FullPath))
+            {
+                try
+                {
+                    var dest = await mover
+                        .MoveToProcessedAsync(scan.FullPath, cancellationToken)
+                        .ConfigureAwait(false);
+                    _logger.LogWarning(
+                        "Duplicate hash after failure: file moved to processed. JobId: {JobId}, FullPath: {FullPath}, FileHash: {FileHash}, Destination: {Destination}",
+                        jobId,
+                        scan.FullPath,
+                        scan.FileHash,
+                        dest);
+                }
+                catch (Exception moveDup)
+                {
+                    _logger.LogError(
+                        moveDup,
+                        "Could not move duplicate failure file to processed. JobId: {JobId}, FileName: {FileName}, FullPath: {FullPath}, FileHash: {FileHash}",
+                        jobId,
+                        Path.GetFileName(scan.FullPath),
+                        scan.FullPath,
+                        scan.FileHash);
+                }
+            }
+        }
         catch (Exception saveEx)
         {
             _logger.LogError(
@@ -383,6 +434,11 @@ public sealed class ExpenseFlowWorker : BackgroundService
                 jobId,
                 Path.GetFileName(scan.FullPath),
                 scan.FullPath);
+        }
+
+        if (duplicateOnFailureSave)
+        {
+            return;
         }
 
         try
@@ -408,6 +464,65 @@ public sealed class ExpenseFlowWorker : BackgroundService
                 Path.GetFileName(scan.FullPath),
                 scan.FullPath);
         }
+    }
+
+    /// <summary>
+    /// Tras violación de índice único en FileHash, mueve el fichero del inbox a processed (duplicado lógico v/s BD).
+    /// </summary>
+    private async Task<bool> TryMoveDuplicateInboxToProcessedOrFailAsync(
+        string jobId,
+        IFileMover mover,
+        ScanResult scan,
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(scan.FullPath))
+        {
+            _logger.LogWarning(
+                "Duplicate hash: inbox file not found (already moved?). JobId: {JobId}, FullPath: {FullPath}, FileHash: {FileHash}",
+                jobId,
+                scan.FullPath,
+                scan.FileHash);
+            return true;
+        }
+
+        try
+        {
+            var dest = await mover
+                .MoveToProcessedAsync(scan.FullPath, cancellationToken)
+                .ConfigureAwait(false);
+            _logger.LogWarning(
+                "Duplicate hash: file moved to processed. JobId: {JobId}, FullPath: {FullPath}, FileHash: {FileHash}, Destination: {Destination}",
+                jobId,
+                scan.FullPath,
+                scan.FileHash,
+                dest);
+            return true;
+        }
+        catch (Exception moveEx)
+        {
+            _logger.LogError(
+                moveEx,
+                "Could not move duplicate to processed. JobId: {JobId}, FileName: {FileName}, FullPath: {FullPath}, FileHash: {FileHash}",
+                jobId,
+                Path.GetFileName(scan.FullPath),
+                scan.FullPath,
+                scan.FileHash);
+            return false;
+        }
+    }
+
+    private static bool IsSqliteUniqueConstraintOnDocumentsFileHash(DbUpdateException ex)
+    {
+        for (var e = (Exception?)ex; e is not null; e = e.InnerException)
+        {
+            if (e.Message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase) &&
+                e.Message.Contains("FileHash", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string TruncateErrorMessage(Exception ex) =>

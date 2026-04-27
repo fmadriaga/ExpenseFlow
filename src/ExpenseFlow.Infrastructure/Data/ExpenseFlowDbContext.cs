@@ -28,6 +28,7 @@ public class ExpenseFlowDbContext : DbContext
             b.Property(d => d.TotalAmount).HasPrecision(18, 2);
             b.Property(d => d.TaxAmount).HasPrecision(18, 2);
             b.Property(d => d.Confidence).HasPrecision(5, 2);
+            b.HasIndex(d => d.FileHash).IsUnique();
             b.HasMany(d => d.DocumentLines)
                 .WithOne(l => l.Document)
                 .HasForeignKey(l => l.DocumentId)

@@ -137,7 +137,9 @@ emplazadas en `Infrastructure/Migrations` (`ExpenseFlowDbContext`).
   `StorageOptions`). Orquestaci?n: `ExpenseFlowWorker` (TASK-007).
 
 Tablas:
-- `Documents`
+- `Documents` (TASK-014: ?ndice ?nico `IX_Documents_FileHash` sobre `FileHash` para evitar
+  duplicados concurrentes; el Worker trata violaci?n de unicidad como duplicado l?gico y mueve el
+  fichero a `processed/` con `LogWarning` incluyendo `FullPath` y `FileHash` completo)
 - `DocumentLines`
 - `ProcessingJobs`
 
