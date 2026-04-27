@@ -17,7 +17,7 @@ Procesamiento de tickets (OCR) desde una carpeta sincronizada, con persistencia 
 | `src/ExpenseFlow.Worker` | Proceso por lotes en segundo plano |
 | `src/ExpenseFlow.Api` | Host HTTP para evolución futura |
 | `docs/` | Visión, arquitectura y tasks |
-| `tests/ExpenseFlow.IntegrationTests` | Pruebas de integración (SQLite, escáner, mapper OCR, FileMover) |
+| `tests/ExpenseFlow.IntegrationTests` | Pruebas de integración (SQLite, escáner, mapper OCR, FileMover, Worker) |
 | `tests/ExpenseFlow.Application.Tests` | Pruebas unitarias (p. ej. normalizador de recibos) |
 | `data/` | Datos locales: base SQLite `expenseflow.db` (generada; no commitear) |
 | `storage/familia/` (subcarpetas `inbox`, `processed`, `error`) | Inbox y salidas de archivos (según arquitectura) |
@@ -52,7 +52,7 @@ El Worker aplica `Migrate()` al arrancar para mantener el esquema al día en des
 - La sección `Storage` en `src/ExpenseFlow.Worker/appsettings.json` define por defecto (relativas al
   `ContentRoot` del Worker) `Inbox`, `Processed` y `Error` bajo `../../storage/familia/...`.
 - El `IFileScanner` usa solo la ruta de **inbox** para listar y filtrar archivos; *processed* y
-  *error* se reservan a tasks de movimiento de archivos. Sin OCR en esta fase.
+  *error* las usa `IFileMover` al cerrar cada ítem del pipeline (TASK-007).
 - Puedes sobrescribir rutas (absoluta o relativa al proyecto Worker) o seguir los valores
   predeterminados, coherentes con la estructura `storage/familia/...` del repositorio.
 - La carpeta de **inbox** debe existir para procesar ficheros (p. ej. creada por sincronización
@@ -64,8 +64,8 @@ El Worker aplica `Migrate()` al arrancar para mantener el esquema al día en des
   sección `Storage`, creando automáticamente las subcarpetas `yyyy/MM` (UTC) y, si hace falta,
   las propias raíces; **no** es necesario crear esa jerarquía a mano antes de un movimiento.
 - Colisiones de nombre en el destino se resuelven con un nombre alternativo sin sobrescribir.
-- El Worker registra el servicio en DI; la **invocación** tras procesar cada archivo corresponde
-  a TASK-007 (orquestación batch).
+- El bucle del Worker invoca el mover tras persistir cada documento (ver «Worker: ejecución local
+  del pipeline completo» más abajo).
 
 ## OCR Azure (TASK-004)
 
@@ -89,11 +89,44 @@ El Worker aplica `Migrate()` al arrancar para mantener el esquema al día en des
   - `AzureDocumentIntelligence__Endpoint`
   - `AzureDocumentIntelligence__ApiKey`
 
-## Ejecutar
+## Worker: ejecución local del pipeline completo (TASK-007)
 
-- Worker: `dotnet run --project src/ExpenseFlow.Worker` (migración, escáner al arranque,
-  luego el `BackgroundService` de demostración; OCR/normalización/movimiento de archivos en
-  orquestación pendiente de tasks posteriores — ver `docs/tasks/`)
+1. **Carpeta inbox:** debe existir la ruta configurada en `Storage:Inbox` (por defecto
+   `storage/familia/inbox` relativa al `ContentRoot` del proyecto Worker). Coloca ahí un ticket
+   válido (`jpg`, `jpeg`, `png`, `pdf`, no vacío).
+2. **Azure Document Intelligence** (obligatorio para procesar archivos reales): no dejes `Endpoint`
+   ni `ApiKey` vacíos. Opciones:
+   - User Secrets del proyecto Worker: `dotnet user-secrets set "AzureDocumentIntelligence:Endpoint" "https://..."` y `dotnet user-secrets set "AzureDocumentIntelligence:ApiKey" "..."`.
+   - Variables de entorno (doble guion bajo = jerarquía en .NET):
+     - `AzureDocumentIntelligence__Endpoint`
+     - `AzureDocumentIntelligence__ApiKey`
+3. **Intervalo entre ciclos:** en `appsettings.json`, sección `Worker` → `IntervalSeconds` (por
+   defecto 60), o variable `Worker__IntervalSeconds`.
+4. **Base de datos (opcional):** `ConnectionStrings__ExpenseFlow` si no usas el valor por defecto
+   del `appsettings` (SQLite bajo `data/expenseflow.db` desde la raíz del repo).
+5. **Rutas de almacenamiento (opcional):** `Storage__Inbox`, `Storage__Processed`, `Storage__Error`
+   si no quieres las rutas relativas por defecto.
+
+**Comando:**
+
+```bash
+dotnet run --project src/ExpenseFlow.Worker
+```
+
+Al arranque se aplican migraciones SQLite. A continuación `ExpenseFlowWorker` ejecuta ciclos: escaneo
+→ OCR → normalización → persistencia → movimiento a `processed` o `error` (sin reintentos
+automáticos).
+
+**Cómo comprobar que el ciclo corre:** en consola (nivel Information) deberías ver, en cada ciclo,
+mensajes equivalentes a: inicio de job con timestamp, número de archivos pendientes devueltos por
+el escáner, y al cerrar el ciclo una línea con **Files found**, **processed OK** y **failed**. Si un
+ciclo anterior sigue en curso, verás una advertencia de que se omite el solapamiento. Tras un
+procesamiento correcto, el archivo desaparece del inbox y aparece bajo `processed/yyyy/MM/`; si
+falla el pipeline del archivo, acaba en `error/yyyy/MM/` (salvo errores extremos de disco).
+
+## Ejecutar (referencia rápida)
+
+- Worker: `dotnet run --project src/ExpenseFlow.Worker` — detalle y variables en la sección anterior.
 - API: `dotnet run --project src/ExpenseFlow.Api`
 
 ## Referencia de capas

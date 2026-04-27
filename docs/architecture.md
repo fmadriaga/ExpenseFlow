@@ -17,14 +17,33 @@ Estructura esperada:
   no hace falta crear manualmente `yyyy/MM`: se crean al mover con `IFileMover`, ver TASK-006)
 
 ### Worker
-Servicio en segundo plano que:
-1. escanea la carpeta `inbox`
-2. filtra archivos válidos (`jpg`, `jpeg`, `png`, `pdf`)
-3. calcula hash para evitar reprocesos
-4. llama al proveedor OCR
-5. normaliza la extracción
-6. guarda el documento y sus líneas
-7. mueve el archivo a `processed` o `error`
+Flujo **end-to-end** del MVP (un ítem por archivo pendiente en cada ciclo):
+
+1. **Scan:** `IFileScanner.GetPendingFilesToProcessAsync` (inbox, extensiones válidas, hash SHA-256,
+   exclusión por `Document.FileHash` ya persistido).
+2. **OCR:** `IReceiptOcrProvider.AnalyzeReceiptAsync` → `OcrResult`.
+3. **Normalize:** `IReceiptNormalizer.Normalize` → `Document` + `DocumentLines` (mapeo en memoria).
+4. **Persist:** `SaveChanges` sobre `Document`, líneas y un `ProcessingJob` con estado
+   `ProcessingJobStatuses.Success` o `Failed` según el caso.
+5. **Move:** `IFileMover.MoveToProcessedAsync` si el ítem terminó bien tras persistir;
+   `MoveToErrorAsync` en rutas de error (fallo antes de persistir, o fallo al mover a processed tras
+   guardar, con actualización del documento/job a fallido cuando aplica).
+
+**Bucle y operación (TASK-007):**
+
+- **Host:** `ExpenseFlowWorker` (`BackgroundService`), registrado con `AddHostedService`.
+- **Intervalo:** `WorkerOptions` en Application (`IntervalSeconds`, sección `Worker` en configuración;
+  mínimo efectivo 1 s entre fin de un ciclo e inicio del siguiente).
+- **Guard de solapamiento:** `SemaphoreSlim(1,1)` + intento de adquisición inmediata; si un ciclo
+  sigue en curso, no se inicia otro en paralelo (advertencia en log y espera al intervalo).
+- **Métricas por ciclo** (log de fin): archivos encontrados (candidatos devueltos por el escáner),
+  procesados OK (persistencia + move a processed), fallidos (cualquier error tratado como fallo de
+  ítem). Inicio de ciclo con timestamp en log; si el escáner lanza, se registra fin con métricas en
+  cero.
+- **Cancelación:** `CancellationToken` del host en `Task.Delay`, `WaitAsync`, escáner, EF y mover.
+
+Los pasos 1–2 (listado y filtrado en inbox, hash y dedup) siguen encapsulados en `FileScanner`; la
+orquestación solo consume contratos en Application e Infrastructure.
 
 ### OCR Provider
 Abstracción `IReceiptOcrProvider` definida en Application.
@@ -37,8 +56,8 @@ Implementación inicial en Infrastructure:
   `prebuilt-receipt`. Endpoint y key se toman desde configuración (`AzureDocumentIntelligence`:
   `Endpoint`, `ApiKey`) mediante opciones tipadas; no se exponen tipos del SDK fuera de
   Infrastructure.
-- **Registro DI:** `AddOcrProviders` registra el provider en Infrastructure; el Worker lo deja
-  disponible por DI sin invocarlo aún (la orquestación queda para tasks posteriores).
+- **Registro DI:** `AddOcrProviders` registra el provider en Infrastructure; `ExpenseFlowWorker`
+  lo resuelve por scope y lo invoca en el pipeline por archivo.
 - **Extensibilidad:** Application depende solo de `IReceiptOcrProvider`; para incorporar nuevos
   OCR providers se agrega implementación y registro en Infrastructure sin cambiar el contrato.
 
@@ -66,8 +85,8 @@ emplazadas en `Infrastructure/Migrations` (`ExpenseFlowDbContext`).
   - **OcrStatus:** `Success` si hay comercio no vacío o total numérico; si no, `Partial` si hay
     fecha, impuesto, moneda o líneas; en caso contrario `Failed`.
   - **Migración EF:** `AddDocumentNormalizationFields` (columnas nuevas en `Documents` y
-    `DocumentLines`). Registro DI: `AddReceiptNormalization` en Infrastructure; el Worker lo
-    invoca junto al OCR para uso en la orquestación posterior.
+    `DocumentLines`). Registro DI: `AddReceiptNormalization` en Infrastructure; el Worker invoca
+    el normalizador tras el OCR en cada archivo procesado.
 - **Escáner de inbox (TASK-003):** `IFileScanner` en `ExpenseFlow.Application.Abstractions` con
   DTO `ScanResult` (ruta, `FileHash` SHA-256 hex, `IsAlreadyInDatabase`). La implementación
   `FileScanner` en `ExpenseFlow.Infrastructure.Scanning` enumera solo el primer nivel de la
@@ -89,7 +108,7 @@ emplazadas en `Infrastructure/Migrations` (`ExpenseFlowDbContext`).
   error al mover y colisión de nombre evitada. **No** consulta base de datos ni implementa
   deduplicación por hash: eso sigue siendo responsabilidad exclusiva de `IFileScanner` (comparación
   con `Document.FileHash`). Registro DI: `AddFileStorage` (tras `AddFileScanning` para tener
-  `StorageOptions`). La orquestación desde el Worker queda en TASK-007.
+  `StorageOptions`). Orquestación: `ExpenseFlowWorker` (TASK-007).
 
 Tablas:
 - `Documents`
@@ -112,6 +131,7 @@ preparada para exponer una API mínima más adelante.
 - Interfaces
 - DTOs internos
 - Contratos para OCR, filesystem y repositorios
+- Opciones de host batch: `WorkerOptions` (`Worker` en configuración) para el intervalo del ciclo
 
 ### Infrastructure
 - EF Core / SQLite

@@ -1,8 +1,16 @@
 # TASK-007 Worker loop
 
-status: ready
+status: done
 owner: backend
 priority: high
+
+## Cierre documental
+
+- **Entregado:** `ExpenseFlowWorker` (`BackgroundService`), `WorkerOptions.IntervalSeconds`, guard de
+  solapamiento con `SemaphoreSlim`, pipeline por archivo (scan → OCR → normalize → persist → move),
+  `ProcessingJob` Success/Failed, métricas en log de fin de ciclo, test de humo de host.
+- **Pendiente (fuera de esta task):** reintentos, multi-worker, colas, API de consulta (ver visión y
+  `docs/architecture.md` sección evolución).
 
 ## Goal
 Ejecutar el pipeline automáticamente en intervalos configurables.
