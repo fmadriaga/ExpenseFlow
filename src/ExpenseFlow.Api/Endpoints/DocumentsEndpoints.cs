@@ -28,7 +28,8 @@ public static class DocumentsEndpoints
                 int pageSize = DefaultPageSize,
                 DateOnly? from = null,
                 DateOnly? to = null,
-                string? status = null) =>
+                string? status = null,
+                string? category = null) =>
             {
                 if (page < 1)
                 {
@@ -46,6 +47,11 @@ public static class DocumentsEndpoints
                 }
 
                 var query = ApplyDocumentFilters(db.Documents.AsNoTracking(), from, to, status);
+                if (!string.IsNullOrWhiteSpace(category))
+                {
+                    var cat = category.Trim();
+                    query = query.Where(d => d.Category == cat);
+                }
 
                 var total = await query.CountAsync(cancellationToken);
                 // SQLite (EF) no traduce OrderBy sobre DateTimeOffset; Id es autoincremental y alinea el orden con inserción.
@@ -122,6 +128,49 @@ public static class DocumentsEndpoints
                 };
 
                 return Results.Ok(dto);
+            });
+
+        group.MapPatch(
+            "/{id:int}",
+            async Task<IResult> (
+                int id,
+                PatchDocumentRequestDto body,
+                ExpenseFlowDbContext db,
+                CancellationToken cancellationToken) =>
+            {
+                var document = await db.Documents
+                    .FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+                if (document is null)
+                {
+                    return Results.NotFound(new
+                    {
+                        error = "Documento no encontrado",
+                        id,
+                    });
+                }
+
+                if (body.MerchantName is not null)
+                {
+                    document.MerchantName = body.MerchantName;
+                }
+
+                if (body.TransactionDate.HasValue)
+                {
+                    document.TransactionDate = body.TransactionDate;
+                }
+
+                if (body.TotalAmount.HasValue)
+                {
+                    document.TotalAmount = body.TotalAmount;
+                }
+
+                if (body.Category is not null)
+                {
+                    document.Category = body.Category;
+                }
+
+                await db.SaveChangesAsync(cancellationToken);
+                return Results.NoContent();
             });
 
         group.MapGet(

@@ -1,0 +1,135 @@
+@page "/documents"
+@rendermode InteractiveServer
+@inject IHttpClientFactory HttpFactory
+
+<PageTitle>Documentos</PageTitle>
+
+<h1>Documentos</h1>
+
+<div class="ef-filters">
+    <label>Desde<input type="date" value="@_fromStr" @onchange="e => _fromStr = e.Value?.ToString() ?? string.Empty" /></label>
+    <label>Hasta<input type="date" value="@_toStr" @onchange="e => _toStr = e.Value?.ToString() ?? string.Empty" /></label>
+    <label>OcrStatus<input @bind="_status" placeholder="Success, Failed…" /></label>
+    <label>Categoría<input @bind="_category" /></label>
+    <button type="button" class="btn btn-primary" @onclick="LoadAsync">Filtrar</button>
+</div>
+
+@if (_error is not null)
+{
+    <p class="text-danger">@_error</p>
+}
+else if (_list is null)
+{
+    <p>Cargando…</p>
+}
+else
+{
+    <table class="ef-table">
+        <thead>
+        <tr>
+            <th>Id</th>
+            <th>Comercio</th>
+            <th>Fecha</th>
+            <th>Total</th>
+            <th>Cat.</th>
+            <th>Estado</th>
+            <th>Conf.</th>
+            <th></th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var d in _list.Items)
+        {
+            <tr>
+                <td>@d.Id</td>
+                <td>@(d.MerchantName ?? "—")</td>
+                <td>@(d.TransactionDate?.ToString("yyyy-MM-dd") ?? "—")</td>
+                <td>@(d.TotalAmount?.ToString() ?? "—") @d.Currency</td>
+                <td>@(d.Category ?? "—")</td>
+                <td>@(d.OcrStatus ?? "—")</td>
+                <td><span class="@BadgeClass(d.Confidence)">@d.Confidence.ToString("0")%</span></td>
+                <td><a href="/documents/@d.Id">Ver</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    <p>Página @_list.Page de @(_list.TotalCount == 0 ? 1 : (int)Math.Ceiling(_list.TotalCount / (double)_list.PageSize)) — @(_list.Items.Count) filas (total @_list.TotalCount)</p>
+    <div>
+        @if (_list.Page > 1)
+        {
+            <button type="button" @onclick="PrevPage">Anterior</button>
+        }
+        @if (_list.Page * _list.PageSize < _list.TotalCount)
+        {
+            <button type="button" @onclick="NextPage">Siguiente</button>
+        }
+    </div>
+}
+
+@code {
+    private DocumentsListResponseDto? _list;
+    private string? _error;
+    private string _fromStr = "";
+    private string _toStr = "";
+    private string _status = "";
+    private string _category = "";
+    private int _page = 1;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        try
+        {
+            var client = HttpFactory.CreateClient("ExpenseFlowApi");
+            var qs = new List<string> { $"page={_page}", "pageSize=20" };
+            if (DateOnly.TryParse(_fromStr, out var from))
+            {
+                qs.Add($"from={from:yyyy-MM-dd}");
+            }
+
+            if (DateOnly.TryParse(_toStr, out var to))
+            {
+                qs.Add($"to={to:yyyy-MM-dd}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(_status))
+            {
+                qs.Add($"status={Uri.EscapeDataString(_status.Trim())}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(_category))
+            {
+                qs.Add($"category={Uri.EscapeDataString(_category.Trim())}");
+            }
+
+            var uri = "documents?" + string.Join('&', qs);
+            _list = await client.GetFromJsonAsync<DocumentsListResponseDto>(uri);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _list = null;
+        }
+    }
+
+    private async Task NextPage()
+    {
+        _page++;
+        await LoadAsync();
+    }
+
+    private async Task PrevPage()
+    {
+        if (_page > 1)
+        {
+            _page--;
+        }
+
+        await LoadAsync();
+    }
+
+    private static string BadgeClass(decimal confidence) =>
+        confidence >= 70 ? "badge-ok" : confidence >= 40 ? "badge-warn" : "badge-bad";
+}

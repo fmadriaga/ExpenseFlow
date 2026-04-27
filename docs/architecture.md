@@ -182,6 +182,12 @@ Host `ExpenseFlow.Api` (ASP.NET Core, minimal API) con:
   sem?ntica que el listado); `delimiter` = `comma` (defecto), `,`, `semicolon` o `;` para
   delimitador. `Content-Type: text/csv`, `Content-Disposition: attachment`. Streaming por
   `AsAsyncEnumerable`; escape RFC 4180 v?a `ICsvExporter` / `DocumentCsvExporter` en Application.
+- **Edici?n y listado (TASK-019):** `PATCH /documents/{id}` cuerpo JSON parcial (`PatchDocumentRequestDto` en
+  Application) para ajustar campos de negocio sin tocar el pipeline batch. `GET /documents` admite filtro
+  `category` (igual que las dem?s query del listado).
+- **UI Blazor Server:** proyecto `ExpenseFlow.Web` (separado de `ExpenseFlow.Api`); `HttpClient` con base
+  `ExpenseFlowApi:BaseUrl` hacia la API; p?ginas de listado, detalle y formulario de correcci?n consumiendo
+  esos endpoints.
 
 ## Capas
 
@@ -207,7 +213,10 @@ Host `ExpenseFlow.Api` (ASP.NET Core, minimal API) con:
 - Orquestaci?n peri?dica del proceso batch
 
 ### Api
-- Consulta de documentos (TASK-010); reproceso y m?s funciones en tasks posteriores
+- Consulta y mutaci?n v?a HTTP (TASK-010+): listado, detalle, export, reproceso, PATCH (TASK-019 v?a UI o cliente).
+
+### Web (TASK-019)
+- `ExpenseFlow.Web`: Blazor Server (interactive) para revisi?n; no aloja la API. Depende de `ExpenseFlow.Api` en ejecuci?n.
 
 ## Principios arquitect?nicos
 - Simplicidad primero
@@ -217,9 +226,9 @@ Host `ExpenseFlow.Api` (ASP.NET Core, minimal API) con:
 - Evitar reprocesos por hash y por estado persistido
 
 ## Evoluci?n futura prevista
-- API para consulta de documentos
-- UI web para revisi?n manual
-- Clasificaci?n de gastos
+- ~~API para consulta de documentos~~ (TASK-010)
+- ~~UI web para revisi?n manual~~ (TASK-019)
+- Clasificaci?n de gastos (parcial: TASK-012 categor?as por palabras clave)
 - Presupuestos y objetivos
 - Divisi?n de gastos familiares
 - App m?vil

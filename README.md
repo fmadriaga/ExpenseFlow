@@ -77,6 +77,7 @@ dotnet ef database update --project src/ExpenseFlow.Infrastructure --startup-pro
 | `src/ExpenseFlow.Infrastructure` | EF Core (`ExpenseFlowDbContext`, migraciones), integraciones, filesystem |
 | `src/ExpenseFlow.Worker` | Proceso por lotes en segundo plano |
 | `src/ExpenseFlow.Api` | API HTTP de consulta de documentos (TASK-010) |
+| `src/ExpenseFlow.Web` | Blazor Server: revisión de documentos y edición vía API (TASK-019) |
 | `docs/` | Visión, arquitectura y tasks |
 | `tests/ExpenseFlow.IntegrationTests` | Pruebas de integración (SQLite, escáner, mapper OCR, FileMover, Worker) |
 | `tests/ExpenseFlow.Application.Tests` | Pruebas unitarias (p. ej. normalizador de recibos) |
@@ -199,8 +200,9 @@ dotnet-counters monitor -p <pid> --counters ExpenseFlow.Worker
 El proyecto `ExpenseFlow.Api` usa la misma cadena SQLite y la sección `Storage` que el Worker
 (`appsettings.json`). Al arrancar aplica migraciones y expone:
 
-- `GET /documents` — listado paginado (`page`, `pageSize`, opcionalmente `from`, `to`, `status`), incluye `category` asignada por el Worker (TASK-012).
+- `GET /documents` — listado paginado (`page`, `pageSize`, opcionalmente `from`, `to`, `status`, `category`), incluye `category` asignada por el Worker (TASK-012).
 - `GET /documents/{id}` — detalle con líneas y `RawJson` (el listado no incluye `RawJson`).
+- `PATCH /documents/{id}` — edición parcial (campos de negocio: comercio, fecha, total, categoría) para la UI (TASK-019).
 - `POST /documents/{id}/reprocess` — marca el documento para reproceso (`OcrStatus` = `Pending`) y, si el fichero está bajo `error/`, lo vuelve a colocar en `inbox/` (mismo hash en base de datos). `422` si el documento ya está en `Success`.
 - `GET /documents/export` — descarga CSV (UTF-8 con BOM) del histórico; opciones `from`, `to`, `status` (como el listado), `delimiter=comma` (defecto) o `delimiter=semicolon` para separador `;` (TASK-013).
 
@@ -222,10 +224,23 @@ curl -s -o export.csv http://localhost:5287/documents/export
 
 Si la base está vacía, el listado devuelve `items` vacío y `totalCount` 0. Tras procesar tickets con el Worker, los mismos documentos son visibles por la API.
 
+## UI web de revisión (TASK-019)
+
+- Proyecto `ExpenseFlow.Web` (Blazor Server). La URL de la API se configura con `ExpenseFlowApi:BaseUrl` (por defecto `http://localhost:5287` en `appsettings.json`).
+- Arranca la **Api** y luego la web:
+
+```bash
+dotnet run --project src/ExpenseFlow.Api
+dotnet run --project src/ExpenseFlow.Web
+```
+
+- Listado con paginación y filtros; detalle con líneas, `RawJson` y formulario de corrección (PATCH al documento).
+
 ## Ejecutar (referencia rápida)
 
 - Worker: `dotnet run --project src/ExpenseFlow.Worker` — detalle y variables en la sección anterior.
 - API: `dotnet run --project src/ExpenseFlow.Api` — ver sección **Api de consulta** arriba.
+- Web (TASK-019): `dotnet run --project src/ExpenseFlow.Web` — requiere la API en marcha; ver sección **UI web de revisión**.
 
 ## Referencia de capas
 

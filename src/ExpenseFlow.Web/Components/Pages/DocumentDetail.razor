@@ -1,0 +1,151 @@
+@page "/documents/{DocumentId:int}"
+@rendermode InteractiveServer
+@inject IHttpClientFactory HttpFactory
+
+<PageTitle>Documento @DocumentId</PageTitle>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <p class="text-danger">@_error</p>
+    <p><a href="/documents">Volver al listado</a></p>
+}
+else if (_detail is null)
+{
+    <p>Cargando…</p>
+}
+else
+{
+    <p><a href="/documents">← Volver</a></p>
+    <h1>Documento #@_detail.Id</h1>
+    <p>
+        <strong>Estado OCR:</strong> @(_detail.OcrStatus ?? "—")
+        <span class="@BadgeClass(_detail.Confidence)" style="margin-left:0.5rem">Conf. @_detail.Confidence.ToString("0")%</span>
+    </p>
+    <section>
+        <h2>Editar (OCR)</h2>
+        <EditForm Model="_edit" OnValidSubmit="SaveAsync">
+            <div style="display:flex; flex-direction:column; gap:0.5rem; max-width:420px">
+                <label>Comercio<input @bind="_edit.MerchantName" class="form-control" /></label>
+                <label>Fecha transacción<input type="date" class="form-control" value="@_dateStr" @onchange="e => _dateStr = e.Value?.ToString() ?? string.Empty" /></label>
+                <label>Total<input type="text" @bind="_totalStr" class="form-control" /></label>
+                <label>Categoría<input @bind="_edit.Category" class="form-control" /></label>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </EditForm>
+        @if (!string.IsNullOrEmpty(_saveMsg))
+        {
+            <p style="color:green">@_saveMsg</p>
+        }
+    </section>
+    <section>
+        <h2>Detalle</h2>
+        <p><strong>Ruta archivo:</strong> @_detail.FilePath</p>
+        <p><strong>Moneda:</strong> @(_detail.Currency ?? "—")</p>
+        @if (!string.IsNullOrEmpty(_detail.ErrorMessage))
+        {
+            <p><strong>Error:</strong> @_detail.ErrorMessage</p>
+        }
+        <h3>Líneas</h3>
+        <table class="ef-table">
+            <thead>
+            <tr><th>Desc.</th><th>Cant.</th><th>P.unit</th><th>Importe</th></tr>
+            </thead>
+            <tbody>
+            @foreach (var line in _detail.Lines)
+            {
+                <tr>
+                    <td>@line.Description</td>
+                    <td>@line.Quantity</td>
+                    <td>@line.UnitPrice</td>
+                    <td>@line.Amount @line.Currency</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        <h3>Raw JSON (OCR)</h3>
+        <div class="raw-json">@(_detail.RawJson ?? "—")</div>
+    </section>
+}
+
+@code {
+    [Parameter] public int DocumentId { get; set; }
+
+    private DocumentDetailDto? _detail;
+    private readonly PatchDocumentRequestDto _edit = new();
+    private string _dateStr = "";
+    private string _totalStr = "";
+    private string? _error;
+    private string? _saveMsg;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        _saveMsg = null;
+        try
+        {
+            var client = HttpFactory.CreateClient("ExpenseFlowApi");
+            var dto = await client.GetFromJsonAsync<DocumentDetailDto>($"documents/{DocumentId}");
+            _detail = dto;
+            if (dto is null)
+            {
+                _error = "Respuesta vacía.";
+                return;
+            }
+
+            _edit.MerchantName = dto.MerchantName ?? "";
+            _edit.Category = dto.Category ?? "";
+            _dateStr = dto.TransactionDate?.ToString("yyyy-MM-dd") ?? "";
+            _totalStr = dto.TotalAmount?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _detail = null;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _saveMsg = null;
+        if (_detail is null)
+        {
+            return;
+        }
+
+        var body = new PatchDocumentRequestDto
+        {
+            MerchantName = _edit.MerchantName,
+            Category = _edit.Category,
+        };
+        if (DateOnly.TryParse(_dateStr, out var td))
+        {
+            body.TransactionDate = td;
+        }
+
+        if (decimal.TryParse(_totalStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var tot))
+        {
+            body.TotalAmount = tot;
+        }
+
+        try
+        {
+            var client = HttpFactory.CreateClient("ExpenseFlowApi");
+            var resp = await client.PatchAsJsonAsync($"documents/{DocumentId}", body);
+            resp.EnsureSuccessStatusCode();
+            _saveMsg = "Guardado.";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _saveMsg = "Error: " + ex.Message;
+        }
+    }
+
+    private static string BadgeClass(decimal confidence) =>
+        confidence >= 70 ? "badge-ok" : confidence >= 40 ? "badge-warn" : "badge-bad";
+}
