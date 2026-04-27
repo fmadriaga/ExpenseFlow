@@ -8,6 +8,18 @@ public class Document
 
     public string FileHash { get; set; } = string.Empty;
 
+    public string? MerchantName { get; set; }
+
+    public DateOnly? TransactionDate { get; set; }
+
+    public string? Currency { get; set; }
+
+    public decimal? TotalAmount { get; set; }
+
+    public decimal? TaxAmount { get; set; }
+
+    public decimal Confidence { get; set; }
+
     public string? RawJson { get; set; }
 
     public string? OcrStatus { get; set; }

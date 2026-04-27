@@ -17,7 +17,8 @@ Procesamiento de tickets (OCR) desde una carpeta sincronizada, con persistencia 
 | `src/ExpenseFlow.Worker` | Proceso por lotes en segundo plano |
 | `src/ExpenseFlow.Api` | Host HTTP para evolución futura |
 | `docs/` | Visión, arquitectura y tasks |
-| `tests/ExpenseFlow.IntegrationTests` | Pruebas (persistencia SQLite, escáner de inbox) |
+| `tests/ExpenseFlow.IntegrationTests` | Pruebas de integración (SQLite, escáner, mapper OCR) |
+| `tests/ExpenseFlow.Application.Tests` | Pruebas unitarias (p. ej. normalizador de recibos) |
 | `data/` | Datos locales: base SQLite `expenseflow.db` (generada; no commitear) |
 | `storage/familia/` (subcarpetas `inbox`, `processed`, `error`) | Inbox y salidas de archivos (según arquitectura) |
 
@@ -25,7 +26,7 @@ Procesamiento de tickets (OCR) desde una carpeta sincronizada, con persistencia 
 
 ```bash
 dotnet build ExpenseFlow.sln -c Release
-dotnet test tests/ExpenseFlow.IntegrationTests/ExpenseFlow.IntegrationTests.csproj
+dotnet test ExpenseFlow.sln
 ```
 
 ## Base de datos (SQLite)
@@ -41,6 +42,10 @@ dotnet ef database update --project src/ExpenseFlow.Infrastructure --startup-pro
 ```
 
 El Worker aplica `Migrate()` al arrancar para mantener el esquema al día en desarrollo.
+
+- **TASK-005:** migración `AddDocumentNormalizationFields` (normalización en `Documents` /
+  `DocumentLines`). No cambia el procedimiento habitual: al ejecutar el Worker se aplica sola; solo
+  necesitas `dotnet ef database update` manual si mantienes la SQLite sin arrancar el Worker.
 
 ## Rutas de almacenamiento y escáner (TASK-003)
 

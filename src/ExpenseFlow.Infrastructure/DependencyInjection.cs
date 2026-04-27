@@ -1,5 +1,6 @@
 using ExpenseFlow.Application.Abstractions;
 using ExpenseFlow.Application.Options;
+using ExpenseFlow.Application.Services;
 using ExpenseFlow.Infrastructure.Data;
 using ExpenseFlow.Infrastructure.Ocr;
 using ExpenseFlow.Infrastructure.Options;
@@ -62,6 +63,15 @@ public static class DependencyInjection
             .AddOptions<AzureDocumentIntelligenceOptions>()
             .Bind(configuration.GetSection(AzureDocumentIntelligenceOptions.SectionName));
         services.AddScoped<IReceiptOcrProvider, AzureDocumentIntelligenceReceiptProvider>();
+        return services;
+    }
+
+    /// <summary>
+    /// Registra el normalizador de recibos (mapeo de OCR a entidad <c>Document</c>).
+    /// </summary>
+    public static IServiceCollection AddReceiptNormalization(this IServiceCollection services)
+    {
+        services.AddSingleton<IReceiptNormalizer, ReceiptNormalizer>();
         return services;
     }
 

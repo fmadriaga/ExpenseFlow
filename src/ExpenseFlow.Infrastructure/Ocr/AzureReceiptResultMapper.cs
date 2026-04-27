@@ -56,7 +56,8 @@ public static class AzureReceiptResultMapper
             TotalAmount: GetDecimalValue(totalField),
             TaxAmount: GetDecimalValue(taxField),
             RawJson: rawJson,
-            Lines: lines);
+            Lines: lines,
+            Currency: GetCurrencyCode(totalField));
     }
 
     private static bool TryGetField(JsonElement root, string fieldName, out JsonElement fieldElement)
@@ -134,6 +135,23 @@ public static class AzureReceiptResultMapper
             DateOnly.TryParse(valueDate.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
         {
             return date;
+        }
+
+        return null;
+    }
+
+    private static string? GetCurrencyCode(JsonElement field)
+    {
+        if (field.ValueKind == JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        if (field.TryGetProperty("valueCurrency", out var valueCurrency) &&
+            valueCurrency.TryGetProperty("currencyCode", out var code) &&
+            code.ValueKind == JsonValueKind.String)
+        {
+            return code.GetString();
         }
 
         return null;

@@ -6,7 +6,8 @@ public sealed record OcrResult(
     decimal? TotalAmount,
     decimal? TaxAmount,
     string RawJson,
-    IReadOnlyList<OcrLineItem> Lines);
+    IReadOnlyList<OcrLineItem> Lines,
+    string? Currency = null);
 
 public sealed record OcrLineItem(
     string? Description,

@@ -1,6 +1,6 @@
 # TASK-005 Receipt normalizer
 
-status: ready
+status: done
 owner: backend
 priority: high
 
@@ -47,3 +47,8 @@ Ya existe o existirá un provider OCR para tickets, pero la respuesta del provee
 - build exitoso
 - tests unitarios básicos del normalizador
 - docs mínimas actualizadas si cambia arquitectura
+
+## Cierre documental
+- **Estado:** `done` (cerrada tras aprobación del Reviewer).
+- **Resumen:** normalizador en Application; campos y migración EF alineados; tests unitarios del normalizador; sin persistencia del flujo OCR→BD (TASK-007).
+- **Archivos tocados en código (referencia):** `Document` / `DocumentLine`, `IReceiptNormalizer`, `ReceiptNormalizer`, `ReceiptOcrStatuses`, `OcrResult.Currency`, mapper Azure, `AddDocumentNormalization`, migración `AddDocumentNormalizationFields`, `tests/ExpenseFlow.Application.Tests`.

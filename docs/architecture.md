@@ -31,7 +31,8 @@ Abstracción `IReceiptOcrProvider` definida en Application.
 Implementación inicial en Infrastructure:
 - `AzureDocumentIntelligenceReceiptProvider`
 - **Contrato y DTO interno (TASK-004):** `IReceiptOcrProvider` recibe ruta de archivo y devuelve
-  `OcrResult` (comercio, fecha de transacción, total, impuestos, líneas y `RawJson` serializable).
+  `OcrResult` (comercio, fecha de transacción, total, impuestos, moneda opcional cuando el campo
+  `Total` la expone, líneas y `RawJson` serializable).
 - **Proveedor Azure (TASK-004):** usa `Azure.AI.DocumentIntelligence` con modelo
   `prebuilt-receipt`. Endpoint y key se toman desde configuración (`AzureDocumentIntelligence`:
   `Endpoint`, `ApiKey`) mediante opciones tipadas; no se exponen tipos del SDK fuera de
@@ -52,8 +53,21 @@ emplazadas en `Infrastructure/Migrations` (`ExpenseFlowDbContext`).
   `ExpenseFlow.Infrastructure.DependencyInjection.AddPersistence` (`AddDbContext`); el
   `Program` del **Worker** invoca ese método. La **Api** no registra aún el DbContext (no
   requerido en el corte actual).
-- **Entidades (Domain):** `Document` (campos: `FilePath`, `FileHash`, `RawJson` para
-  auditoría OCR, `OcrStatus`, `ErrorMessage`, `CreatedAt`), `DocumentLine`, `ProcessingJob`.
+- **Entidades (Domain):** `Document` (campos: `FilePath`, `FileHash`, datos normalizados del
+  ticket: `MerchantName`, `TransactionDate`, `Currency`, `TotalAmount`, `TaxAmount`, `Confidence`,
+  más `RawJson` para auditoría OCR, `OcrStatus`, `ErrorMessage`, `CreatedAt`), `DocumentLine`
+  (`Description`, `Quantity`, `UnitPrice`, `Amount`, `Currency`), `ProcessingJob`.
+- **Normalización (TASK-005):** contrato `IReceiptNormalizer` (`Abstractions/`) e implementación
+  `ReceiptNormalizer` (`Application/Services/`) mapean `OcrResult` más `FilePath`/`FileHash` a
+  `Document` y `DocumentLines` (sin persistir). Se copia `RawJson` al documento. Constantes de
+  estado en `ReceiptOcrStatuses` (`Success`, `Partial`, `Failed`).
+  - **Confidence:** porcentaje 0–100 sobre 6 ranuras igualmente ponderadas: comercio, fecha de
+    transacción, total, impuesto, moneda, y “hay al menos una línea” en `OcrResult.Lines`.
+  - **OcrStatus:** `Success` si hay comercio no vacío o total numérico; si no, `Partial` si hay
+    fecha, impuesto, moneda o líneas; en caso contrario `Failed`.
+  - **Migración EF:** `AddDocumentNormalizationFields` (columnas nuevas en `Documents` y
+    `DocumentLines`). Registro DI: `AddReceiptNormalization` en Infrastructure; el Worker lo
+    invoca junto al OCR para uso en la orquestación posterior.
 - **Escáner de inbox (TASK-003):** `IFileScanner` en `ExpenseFlow.Application.Abstractions` con
   DTO `ScanResult` (ruta, `FileHash` SHA-256 hex, `IsAlreadyInDatabase`). La implementación
   `FileScanner` en `ExpenseFlow.Infrastructure.Scanning` enumera solo el primer nivel de la

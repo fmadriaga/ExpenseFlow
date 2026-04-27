@@ -24,6 +24,9 @@ public class ExpenseFlowDbContext : DbContext
             b.HasKey(d => d.Id);
             b.Property(d => d.FilePath).IsRequired();
             b.Property(d => d.FileHash).IsRequired();
+            b.Property(d => d.TotalAmount).HasPrecision(18, 2);
+            b.Property(d => d.TaxAmount).HasPrecision(18, 2);
+            b.Property(d => d.Confidence).HasPrecision(5, 2);
             b.HasMany(d => d.DocumentLines)
                 .WithOne(l => l.Document)
                 .HasForeignKey(l => l.DocumentId)
@@ -38,6 +41,8 @@ public class ExpenseFlowDbContext : DbContext
         {
             b.ToTable("DocumentLines");
             b.HasKey(l => l.Id);
+            b.Property(l => l.Quantity).HasPrecision(18, 4);
+            b.Property(l => l.UnitPrice).HasPrecision(18, 2);
             b.Property(l => l.Amount).HasPrecision(18, 2);
         });
 

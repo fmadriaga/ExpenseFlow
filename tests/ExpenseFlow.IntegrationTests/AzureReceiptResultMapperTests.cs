@@ -41,6 +41,7 @@ public class AzureReceiptResultMapperTests
         Assert.Equal(new DateOnly(2026, 4, 26), result.TransactionDate);
         Assert.Equal(19.99m, result.TotalAmount);
         Assert.Equal(1.23m, result.TaxAmount);
+        Assert.Equal("USD", result.Currency);
         Assert.Equal(rawJson, result.RawJson);
         Assert.Single(result.Lines);
         var line = result.Lines[0];
