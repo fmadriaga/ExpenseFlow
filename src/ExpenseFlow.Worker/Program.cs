@@ -22,6 +22,7 @@ builder.Services.AddFileScanning(builder.Configuration);
 builder.Services.AddFileStorage();
 builder.Services.AddOcrProviders(builder.Configuration);
 builder.Services.AddReceiptNormalization();
+builder.Services.AddCategorization(builder.Configuration);
 builder.Services.AddHostedService<ExpenseFlowWorker>();
 
 var host = builder.Build();

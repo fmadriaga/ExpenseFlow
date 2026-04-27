@@ -26,6 +26,8 @@ public class Document
 
     public string? ErrorMessage { get; set; }
 
+    public string Category { get; set; } = "otros";
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public ICollection<DocumentLine> DocumentLines { get; set; } = new List<DocumentLine>();

@@ -24,6 +24,7 @@ public class ExpenseFlowDbContext : DbContext
             b.HasKey(d => d.Id);
             b.Property(d => d.FilePath).IsRequired();
             b.Property(d => d.FileHash).IsRequired();
+            b.Property(d => d.Category).IsRequired().HasDefaultValue("otros");
             b.Property(d => d.TotalAmount).HasPrecision(18, 2);
             b.Property(d => d.TaxAmount).HasPrecision(18, 2);
             b.Property(d => d.Confidence).HasPrecision(5, 2);

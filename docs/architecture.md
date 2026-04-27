@@ -92,7 +92,8 @@ emplazadas en `Infrastructure/Migrations` (`ExpenseFlowDbContext`).
   ConnectionStrings__ExpenseFlow).
 - **Entidades (Domain):** `Document` (campos: `FilePath`, `FileHash`, datos normalizados del
   ticket: `MerchantName`, `TransactionDate`, `Currency`, `TotalAmount`, `TaxAmount`, `Confidence`,
-  m?s `RawJson` para auditor?a OCR, `OcrStatus`, `ErrorMessage`, `CreatedAt`), `DocumentLine`
+  m?s `RawJson` para auditor?a OCR, `OcrStatus`, `ErrorMessage`, `Category` (texto; por defecto
+  `otros`, TASK-012), `CreatedAt`), `DocumentLine`
   (`Description`, `Quantity`, `UnitPrice`, `Amount`, `Currency`), `ProcessingJob`.
 - **Normalizaci?n (TASK-005):** contrato `IReceiptNormalizer` (`Abstractions/`) e implementaci?n
   `ReceiptNormalizer` (`Application/Services/`) mapean `OcrResult` m?s `FilePath`/`FileHash` a
@@ -105,6 +106,13 @@ emplazadas en `Infrastructure/Migrations` (`ExpenseFlowDbContext`).
   - **Migraci?n EF:** `AddDocumentNormalizationFields` (columnas nuevas en `Documents` y
     `DocumentLines`). Registro DI: `AddReceiptNormalization` en Infrastructure; el Worker invoca
     el normalizador tras el OCR en cada archivo procesado.
+- **Categorizaci?n (TASK-012):** `IExpenseCategorizer` en `Application.Abstractions` con
+  `KeywordExpenseCategorizer` (`Application/Categorization/`): asigna `Document.Category` seg?n
+  coincidencias case-insensitive por subcadena sobre `MerchantName` con reglas configurables en
+  `CategoryRules` (`CategoryOptions` en Application, secci?n JSON de diccionario
+  categor?a ? lista de palabras). Si no hay coincidencia o `MerchantName` vac?o, usa `otros`; el
+  m?todo no propaga excepciones al pipeline. Se invoca en el Worker despu?s de `Normalize(...)` y
+  antes de `SaveChanges`. Registro DI: `AddCategorization`. Migraci?n `AddDocumentCategory`.
 - **Esc?ner de inbox (TASK-003):** `IFileScanner` en `ExpenseFlow.Application.Abstractions` con
   DTO `ScanResult` (ruta, `FileHash` SHA-256 hex, `IsAlreadyInDatabase`). La implementaci?n
   `FileScanner` en `ExpenseFlow.Infrastructure.Scanning` enumera solo el primer nivel de la
@@ -141,8 +149,8 @@ Host `ExpenseFlow.Api` (ASP.NET Core, minimal API) con:
   `Migrate()` al arranque excepto en entorno `Testing`.
 - **DTOs (Application):** `DocumentSummaryDto` (listado, sin `FilePath` ni `RawJson`),
   `DocumentDetailDto` (incluye `FilePath`, `RawJson`, l?neas), `DocumentLineDto`,
-  `DocumentsListResponseDto` (`items`, `page`, `pageSize`, `totalCount`). `Category` reservada
-  (null hasta que exista en dominio).
+  `DocumentsListResponseDto` (`items`, `page`, `pageSize`, `totalCount`). `Category` refleja el
+  campo persistido en `Document` (TASK-012; p. ej. `otros`, `supermercado`).
 - **Endpoints** (`MapDocumentsEndpoints`): `GET /documents` (paginaci?n `page` / `pageSize` m?x. 100,
   filtros opcionales `from` / `to` en `DateOnly`, `status` = `OcrStatus`); orden del listado por
   `Id` descendente (SQLite/EF no ordenan por `DateTimeOffset` en servidor; el orden se alinea con

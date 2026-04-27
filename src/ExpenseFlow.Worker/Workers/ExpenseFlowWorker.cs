@@ -163,6 +163,7 @@ public sealed class ExpenseFlowWorker : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<ExpenseFlowDbContext>();
         var ocr = scope.ServiceProvider.GetRequiredService<IReceiptOcrProvider>();
         var normalizer = scope.ServiceProvider.GetRequiredService<IReceiptNormalizer>();
+        var categorizer = scope.ServiceProvider.GetRequiredService<IExpenseCategorizer>();
         var mover = scope.ServiceProvider.GetRequiredService<IFileMover>();
 
         var fileStarted = DateTimeOffset.UtcNow;
@@ -194,6 +195,7 @@ public sealed class ExpenseFlowWorker : BackgroundService
                     jobId,
                     db,
                     mover,
+                    categorizer,
                     scan,
                     fileStarted,
                     "ocr_failed",
@@ -241,6 +243,8 @@ public sealed class ExpenseFlowWorker : BackgroundService
                 db.Documents.Add(document);
             }
 
+            document.Category = categorizer.Categorize(document);
+
             await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -256,6 +260,7 @@ public sealed class ExpenseFlowWorker : BackgroundService
                     jobId,
                     db,
                     mover,
+                    categorizer,
                     scan,
                     fileStarted,
                     "persistence_failed",
@@ -340,6 +345,7 @@ public sealed class ExpenseFlowWorker : BackgroundService
         string jobId,
         ExpenseFlowDbContext db,
         IFileMover mover,
+        IExpenseCategorizer categorizer,
         ScanResult scan,
         DateTimeOffset fileStarted,
         string failureReason,
@@ -357,6 +363,7 @@ public sealed class ExpenseFlowWorker : BackgroundService
                 ErrorMessage = TruncateErrorMessage(ex),
                 Confidence = 0m,
             };
+            errorDoc.Category = categorizer.Categorize(errorDoc);
             errorDoc.ProcessingJobs.Add(
                 new ProcessingJob
                 {

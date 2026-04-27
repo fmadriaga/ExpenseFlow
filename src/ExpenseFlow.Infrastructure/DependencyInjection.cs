@@ -1,4 +1,5 @@
 using ExpenseFlow.Application.Abstractions;
+using ExpenseFlow.Application.Categorization;
 using ExpenseFlow.Application.Options;
 using ExpenseFlow.Application.Services;
 using ExpenseFlow.Infrastructure.Configuration;
@@ -89,6 +90,64 @@ public static class DependencyInjection
     {
         services.AddSingleton<IReceiptNormalizer, ReceiptNormalizer>();
         return services;
+    }
+
+    /// <summary>
+    /// Registra categorización por palabras clave (<see cref="CategoryOptions"/>).
+    /// </summary>
+    public static IServiceCollection AddCategorization(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services
+            .AddOptions<CategoryOptions>()
+            .Configure<IConfiguration>(
+                (opts, config) =>
+                {
+                    BindCategoryRules(config.GetSection(CategoryOptions.SectionName), opts);
+                });
+        services.AddSingleton<IExpenseCategorizer, KeywordExpenseCategorizer>();
+        return services;
+    }
+
+    private static void BindCategoryRules(
+        IConfigurationSection section,
+        CategoryOptions target)
+    {
+        if (section is null || !section.Exists())
+        {
+            return;
+        }
+
+        var direct = section.Get<Dictionary<string, string[]>>();
+        if (direct is not null)
+        {
+            foreach (var kv in direct)
+            {
+                target.Rules[kv.Key] = kv.Value ?? Array.Empty<string>();
+            }
+
+            return;
+        }
+
+        foreach (var child in section.GetChildren())
+        {
+            var key = child.Key;
+            var arr = child.Get<string[]>();
+            if (arr is { Length: > 0 })
+            {
+                target.Rules[key] = arr;
+            }
+            else
+            {
+                var fromNumbered = child.GetChildren().Select(c => c.Value).Where(v => v is not null)
+                    .ToArray();
+                if (fromNumbered.Length > 0)
+                {
+                    target.Rules[key] = fromNumbered!;
+                }
+            }
+        }
     }
 
     private static string ResolveConnectionString(

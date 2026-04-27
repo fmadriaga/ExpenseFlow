@@ -25,6 +25,21 @@ En .NET, la jerarquía en variables de entorno usa **doble guion bajo** (`__`) c
 
 \*Tras la carga de `appsettings.json` + `appsettings.{Environment}.json` + User Secrets + variables de entorno. Con `DOTNET_ENVIRONMENT=Production` y solo el `appsettings.json` base, **Azure** debe definirse por entorno o el arranque falla con `OptionsValidationException`.
 
+### CategoryRules (TASK-012)
+
+El Worker asigna `Document.Category` después de normalizar el OCR y antes de guardar. Las reglas son opcionales y se leen solo en `ExpenseFlow.Worker`: objeto JSON cuya **clave** es el nombre de categoría que se persistirá y cuyo **valor** es un array de subcadenas buscadas en `MerchantName` (sin distinguir mayúsculas). Si no hay coincidencia, se usa `otros`.
+
+Ejemplo en `src/ExpenseFlow.Worker/appsettings.json`:
+
+```json
+"CategoryRules": {
+  "supermercado": ["walmart", "carrefour", "disco"],
+  "combustible": ["ypf", "shell", "axion"]
+}
+```
+
+Si omites `CategoryRules` en el Worker, el categorizador deja todos los documentos en `otros`.
+
 ### User Secrets (setup local recomendado)
 
 Desde la carpeta del Worker:
@@ -170,7 +185,7 @@ falla el pipeline del archivo, acaba en `error/yyyy/MM/` (salvo errores extremos
 El proyecto `ExpenseFlow.Api` usa la misma cadena SQLite y la sección `Storage` que el Worker
 (`appsettings.json`). Al arrancar aplica migraciones y expone:
 
-- `GET /documents` — listado paginado (`page`, `pageSize`, opcionalmente `from`, `to`, `status`).
+- `GET /documents` — listado paginado (`page`, `pageSize`, opcionalmente `from`, `to`, `status`), incluye `category` asignada por el Worker (TASK-012).
 - `GET /documents/{id}` — detalle con líneas y `RawJson` (el listado no incluye `RawJson`).
 - `POST /documents/{id}/reprocess` — marca el documento para reproceso (`OcrStatus` = `Pending`) y, si el fichero está bajo `error/`, lo vuelve a colocar en `inbox/` (mismo hash en base de datos). `422` si el documento ya está en `Success`.
 
