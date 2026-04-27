@@ -1,6 +1,6 @@
 # TASK-009 Basic logging
 
-status: ready
+status: done
 owner: backend
 priority: medium
 
@@ -44,3 +44,11 @@ Como el proceso será automático, se necesita poder entender qué ocurrió en c
 - build exitoso
 - logs revisados manualmente con un caso de éxito y uno de error
 - reviewer puede entender el flujo solo leyendo logs
+
+## Cierre documental
+
+- **Entregado:** correlación por `JobId` por corrida, eventos estructurados por archivo y niveles
+  `Information` / `Warning` / `Error` alineados al flujo del pipeline.
+- **Operación:** logs legibles en consola local (`IncludeScopes`) con métricas de fin de job y
+  contexto por archivo (`FileName`, hash abreviado cuando aplica).
+- **Pendiente (fuera de alcance):** observabilidad avanzada (tracing distribuido, dashboards).

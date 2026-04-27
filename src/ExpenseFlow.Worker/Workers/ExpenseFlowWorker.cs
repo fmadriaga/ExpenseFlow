@@ -76,8 +76,13 @@ public sealed class ExpenseFlowWorker : BackgroundService
 
     private async Task RunJobCycleAsync(CancellationToken stoppingToken)
     {
+        var jobId = Guid.NewGuid().ToString("N");
+        using var _ = _logger.BeginScope(new Dictionary<string, object> { ["JobId"] = jobId });
         var jobStarted = DateTimeOffset.UtcNow;
-        _logger.LogInformation("Processing job started at {StartedAt:O}", jobStarted);
+        _logger.LogInformation(
+            "Processing job started. JobId: {JobId}, StartedAt: {StartedAt:O}",
+            jobId,
+            jobStarted);
 
         var found = 0;
         var processedOk = 0;
@@ -95,18 +100,28 @@ public sealed class ExpenseFlowWorker : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Scanner failed; ending job cycle.");
-            LogJobFinished(jobStarted, found: 0, processedOk: 0, processedFailed: 0);
+            _logger.LogError(
+                ex,
+                "Scanner failed; ending job cycle. JobId: {JobId}",
+                jobId);
+            LogJobFinished(jobId, jobStarted, found: 0, processedOk: 0, processedFailed: 0);
             return;
         }
 
         found = pending.Count;
-        _logger.LogInformation("Scanner returned {Count} pending file(s).", found);
+        _logger.LogInformation(
+            "Scanner returned {Count} pending file(s). JobId: {JobId}",
+            found,
+            jobId);
 
         foreach (var scan in pending)
         {
+            _logger.LogInformation(
+                "Candidate file detected. JobId: {JobId}, FileName: {FileName}",
+                jobId,
+                Path.GetFileName(scan.FullPath));
             stoppingToken.ThrowIfCancellationRequested();
-            var success = await ProcessOneFileAsync(scope, scan, stoppingToken).ConfigureAwait(false);
+            var success = await ProcessOneFileAsync(jobId, scope, scan, stoppingToken).ConfigureAwait(false);
             if (success)
             {
                 processedOk++;
@@ -117,10 +132,11 @@ public sealed class ExpenseFlowWorker : BackgroundService
             }
         }
 
-        LogJobFinished(jobStarted, found, processedOk, processedFailed);
+        LogJobFinished(jobId, jobStarted, found, processedOk, processedFailed);
     }
 
     private void LogJobFinished(
+        string jobId,
         DateTimeOffset jobStarted,
         int found,
         int processedOk,
@@ -129,7 +145,8 @@ public sealed class ExpenseFlowWorker : BackgroundService
         var finished = DateTimeOffset.UtcNow;
         var duration = finished - jobStarted;
         _logger.LogInformation(
-            "Processing job finished at {FinishedAt:O}. Duration: {Duration}. Files found: {Found}, processed OK: {Ok}, failed: {Failed}",
+            "Processing job finished. JobId: {JobId}, FinishedAt: {FinishedAt:O}, Duration: {Duration}, FilesFound: {Found}, ProcessedOk: {Ok}, Failed: {Failed}",
+            jobId,
             finished,
             duration,
             found,
@@ -138,6 +155,7 @@ public sealed class ExpenseFlowWorker : BackgroundService
     }
 
     private async Task<bool> ProcessOneFileAsync(
+        string jobId,
         IServiceScope scope,
         ScanResult scan,
         CancellationToken cancellationToken)
@@ -148,36 +166,74 @@ public sealed class ExpenseFlowWorker : BackgroundService
         var mover = scope.ServiceProvider.GetRequiredService<IFileMover>();
 
         var fileStarted = DateTimeOffset.UtcNow;
-        Document document;
+        var fileName = Path.GetFileName(scan.FullPath);
+
+        _logger.LogInformation(
+            "File processing started. JobId: {JobId}, FileName: {FileName}",
+            jobId,
+            fileName);
+
+        OcrResult ocrResult;
 
         try
         {
-            var ocrResult = await ocr
+            ocrResult = await ocr
                 .AnalyzeReceiptAsync(scan.FullPath, cancellationToken)
                 .ConfigureAwait(false);
-            document = normalizer.Normalize(ocrResult, scan.FullPath, scan.FileHash);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "OCR failed. JobId: {JobId}, FileName: {FileName}, FullPath: {FullPath}",
+                jobId,
+                fileName,
+                scan.FullPath);
+            db.ChangeTracker.Clear();
+            await PersistFailureAndMoveToErrorAsync(
+                    jobId,
+                    db,
+                    mover,
+                    scan,
+                    fileStarted,
+                    "ocr_failed",
+                    ex,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return false;
+        }
 
-            var finished = DateTimeOffset.UtcNow;
-            document.ProcessingJobs.Add(
-                new ProcessingJob
-                {
-                    StartedAt = fileStarted,
-                    FinishedAt = finished,
-                    Status = ProcessingJobStatuses.Success,
-                });
+        var document = normalizer.Normalize(ocrResult, scan.FullPath, scan.FileHash);
+        var finished = DateTimeOffset.UtcNow;
+        document.ProcessingJobs.Add(
+            new ProcessingJob
+            {
+                StartedAt = fileStarted,
+                FinishedAt = finished,
+                Status = ProcessingJobStatuses.Success,
+            });
 
+        try
+        {
             db.Documents.Add(document);
             await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Processing failed before or during persist for {Path}", scan.FullPath);
+            _logger.LogError(
+                ex,
+                "Persistence failed. JobId: {JobId}, FileName: {FileName}, FullPath: {FullPath}",
+                jobId,
+                fileName,
+                scan.FullPath);
             db.ChangeTracker.Clear();
             await PersistFailureAndMoveToErrorAsync(
+                    jobId,
                     db,
                     mover,
                     scan,
                     fileStarted,
+                    "persistence_failed",
                     ex,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -186,17 +242,25 @@ public sealed class ExpenseFlowWorker : BackgroundService
 
         try
         {
-            await mover
+            var destinationPath = await mover
                 .MoveToProcessedAsync(scan.FullPath, cancellationToken)
                 .ConfigureAwait(false);
+            _logger.LogInformation(
+                "File moved to processed. JobId: {JobId}, FileName: {FileName}, Destination: {Destination}",
+                jobId,
+                fileName,
+                destinationPath);
         }
         catch (Exception moveEx)
         {
             _logger.LogError(
                 moveEx,
-                "Move to processed failed after DB save for {Path}",
+                "Move to processed failed after DB save. JobId: {JobId}, FileName: {FileName}, FullPath: {FullPath}",
+                jobId,
+                fileName,
                 scan.FullPath);
             await HandleMoveToProcessedFailureAsync(
+                    jobId,
                     db,
                     document,
                     moveEx,
@@ -207,10 +271,15 @@ public sealed class ExpenseFlowWorker : BackgroundService
             return false;
         }
 
+        _logger.LogInformation(
+            "File processing finished successfully. JobId: {JobId}, FileName: {FileName}",
+            jobId,
+            fileName);
         return true;
     }
 
-    private static async Task HandleMoveToProcessedFailureAsync(
+    private async Task HandleMoveToProcessedFailureAsync(
+        string jobId,
         ExpenseFlowDbContext db,
         Document document,
         Exception moveEx,
@@ -232,15 +301,23 @@ public sealed class ExpenseFlowWorker : BackgroundService
 
         if (File.Exists(sourcePath))
         {
-            await mover.MoveToErrorAsync(sourcePath, cancellationToken).ConfigureAwait(false);
+            var movedTo = await mover.MoveToErrorAsync(sourcePath, cancellationToken).ConfigureAwait(false);
+            _logger.LogWarning(
+                "File moved to error after processed move failure. JobId: {JobId}, FileName: {FileName}, Reason: {Reason}, Destination: {Destination}",
+                jobId,
+                Path.GetFileName(sourcePath),
+                "processed_move_failed",
+                movedTo);
         }
     }
 
     private async Task PersistFailureAndMoveToErrorAsync(
+        string jobId,
         ExpenseFlowDbContext db,
         IFileMover mover,
         ScanResult scan,
         DateTimeOffset fileStarted,
+        string failureReason,
         Exception ex,
         CancellationToken cancellationToken)
     {
@@ -270,7 +347,9 @@ public sealed class ExpenseFlowWorker : BackgroundService
         {
             _logger.LogError(
                 saveEx,
-                "Could not persist failure document for {Path}",
+                "Could not persist failure document. JobId: {JobId}, FileName: {FileName}, FullPath: {FullPath}",
+                jobId,
+                Path.GetFileName(scan.FullPath),
                 scan.FullPath);
         }
 
@@ -278,14 +357,23 @@ public sealed class ExpenseFlowWorker : BackgroundService
         {
             if (File.Exists(scan.FullPath))
             {
-                await mover.MoveToErrorAsync(scan.FullPath, cancellationToken).ConfigureAwait(false);
+                var movedTo = await mover.MoveToErrorAsync(scan.FullPath, cancellationToken).ConfigureAwait(false);
+                _logger.LogWarning(
+                    "File moved to error. JobId: {JobId}, FileName: {FileName}, FullPath: {FullPath}, Reason: {Reason}, Destination: {Destination}",
+                    jobId,
+                    Path.GetFileName(scan.FullPath),
+                    scan.FullPath,
+                    failureReason,
+                    movedTo);
             }
         }
         catch (Exception moveEx)
         {
             _logger.LogError(
                 moveEx,
-                "Could not move file to error folder for {Path}",
+                "Could not move file to error folder. JobId: {JobId}, FileName: {FileName}, FullPath: {FullPath}",
+                jobId,
+                Path.GetFileName(scan.FullPath),
                 scan.FullPath);
         }
     }

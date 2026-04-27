@@ -1,6 +1,6 @@
 # TASK-008 Configuration and secrets
 
-status: ready
+status: done
 owner: backend
 priority: high
 
@@ -42,3 +42,12 @@ Las rutas de storage, cadena de conexiÃ³n y credenciales del proveedor OCR no de
 - build exitoso
 - config validada al arranque
 - README actualizado con variables necesarias
+
+
+
+## Cierre documental
+
+- **Entregado:** validación al arranque para StorageOptions, AzureDocumentIntelligenceOptions, WorkerOptions y ConnectionStrings:ExpenseFlow.
+- **Seguridad:** el repositorio mantiene placeholders/no secretos; los valores reales se cargan por User Secrets o variables de entorno.
+- **Pendiente (fuera de alcance):** secret manager cloud y rotación automática de secretos.
+

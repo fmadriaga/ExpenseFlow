@@ -153,6 +153,18 @@ ciclo anterior sigue en curso, verás una advertencia de que se omite el solapam
 procesamiento correcto, el archivo desaparece del inbox y aparece bajo `processed/yyyy/MM/`; si
 falla el pipeline del archivo, acaba en `error/yyyy/MM/` (salvo errores extremos de disco).
 
+## Logging básico (TASK-009)
+
+- Cada corrida del Worker incluye un `JobId` de correlación (scope de logging en consola).
+- Para diagnosticar un archivo de punta a punta, busca por `JobId` y luego por `FileName`.
+- Eventos clave esperables:
+  - `Information`: inicio/fin de job, candidato detectado, movido a `processed`.
+  - `Warning`: duplicado por hash, movido a `error` con motivo breve.
+  - `Error`: OCR fallido, persistencia fallida, fallo de movimiento.
+- Niveles de consola en `appsettings.json`: `Default=Information`, `Microsoft=Warning`,
+  `System=Warning`, `Console.IncludeScopes=true`.
+- Seguridad: los logs no deben contener `ApiKey` ni connection strings.
+
 ## Ejecutar (referencia rápida)
 
 - Worker: `dotnet run --project src/ExpenseFlow.Worker` — detalle y variables en la sección anterior.

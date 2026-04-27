@@ -90,14 +90,15 @@ public sealed class FileMover : IFileMover
         var fileName = Path.GetFileName(fullSource);
         var preferredDest = Path.GetFullPath(Path.Combine(destDir, fileName));
         var finalDest = EnsureUniqueDestinationPath(preferredDest);
+        var destinationFileName = Path.GetFileName(finalDest);
 
         if (!string.Equals(preferredDest, finalDest, StringComparison.Ordinal))
         {
             _logger.LogInformation(
-                "Duplicate destination name avoided (not overwriting). Bucket: {Bucket}, Preferred: {Preferred}, Using: {Final}",
+                "Duplicate destination name avoided (not overwriting). Bucket: {Bucket}, SourceFileName: {SourceFileName}, DestinationFileName: {DestinationFileName}",
                 bucketLabel,
-                preferredDest,
-                finalDest);
+                fileName,
+                destinationFileName);
         }
 
         try
@@ -108,18 +109,18 @@ public sealed class FileMover : IFileMover
         {
             _logger.LogError(
                 ex,
-                "Failed to move file to {Bucket}. Source: {Source}, IntendedDestination: {Destination}",
+                "Failed to move file to {Bucket}. SourceFileName: {SourceFileName}, DestinationFileName: {DestinationFileName}",
                 bucketLabel,
-                fullSource,
-                finalDest);
+                fileName,
+                destinationFileName);
             throw;
         }
 
         _logger.LogInformation(
-            "Moved file to {Bucket}. Source: {Source}, Destination: {Destination}",
+            "Moved file to {Bucket}. SourceFileName: {SourceFileName}, DestinationFileName: {DestinationFileName}",
             bucketLabel,
-            fullSource,
-            finalDest);
+            fileName,
+            destinationFileName);
 
         return finalDest;
     }

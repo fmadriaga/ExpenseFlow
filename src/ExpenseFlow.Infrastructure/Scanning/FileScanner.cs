@@ -145,8 +145,8 @@ public sealed class FileScanner : IFileScanner
             .ConfigureAwait(false);
         if (exists)
         {
-            _logger.LogInformation(
-                "File already in database (duplicate by hash), skipping: {FilePath} Hash: {FileHashPrefix}…",
+            _logger.LogWarning(
+                "Duplicate file by hash, skipping. FullPath: {FullPath}, FileHash: {FileHashPrefix}…",
                 filePath,
                 fileHash.Length >= 12
                     ? fileHash[..12]
