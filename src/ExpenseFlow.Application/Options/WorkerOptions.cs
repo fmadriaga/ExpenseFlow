@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace ExpenseFlow.Application.Options;
 
 public sealed class WorkerOptions
@@ -7,5 +9,6 @@ public sealed class WorkerOptions
     /// <summary>
     /// Segundos de espera entre el fin de un ciclo y el inicio del siguiente.
     /// </summary>
+    [Range(1, int.MaxValue)]
     public int IntervalSeconds { get; set; } = 60;
 }

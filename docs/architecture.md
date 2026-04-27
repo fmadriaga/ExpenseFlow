@@ -72,6 +72,12 @@ emplazadas en `Infrastructure/Migrations` (`ExpenseFlowDbContext`).
   `ExpenseFlow.Infrastructure.DependencyInjection.AddPersistence` (`AddDbContext`); el
   `Program` del **Worker** invoca ese método. La **Api** no registra aún el DbContext (no
   requerido en el corte actual).
+- **Configuración y secretos (TASK-008):** `ConnectionStrings:ExpenseFlow` es obligatoria (no vacía)
+  antes de registrar EF; `StorageOptions`, `AzureDocumentIntelligenceOptions` y `WorkerOptions` usan
+  validación con anotaciones (`ValidateDataAnnotations` + `ValidateOnStart`) y resolución forzada al
+  inicio del Worker antes de `Migrate()`. En `Production`, `AzureDocumentIntelligence` debe
+  configurarse vía entorno o secretos; `appsettings.Development.json` incluye placeholders no
+  reales solo para desarrollo local y herramientas (sustituir por User Secrets para OCR real).
 - **Entidades (Domain):** `Document` (campos: `FilePath`, `FileHash`, datos normalizados del
   ticket: `MerchantName`, `TransactionDate`, `Currency`, `TotalAmount`, `TaxAmount`, `Confidence`,
   más `RawJson` para auditoría OCR, `OcrStatus`, `ErrorMessage`, `CreatedAt`), `DocumentLine`

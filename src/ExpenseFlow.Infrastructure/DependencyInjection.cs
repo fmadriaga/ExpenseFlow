@@ -1,6 +1,7 @@
 using ExpenseFlow.Application.Abstractions;
 using ExpenseFlow.Application.Options;
 using ExpenseFlow.Application.Services;
+using ExpenseFlow.Infrastructure.Configuration;
 using ExpenseFlow.Infrastructure.Data;
 using ExpenseFlow.Infrastructure.Ocr;
 using ExpenseFlow.Infrastructure.Options;
@@ -17,7 +18,7 @@ namespace ExpenseFlow.Infrastructure;
 
 public static class DependencyInjection
 {
-    private const string ConnectionStringName = "ExpenseFlow";
+    private const string ConnectionStringName = ExpenseFlowConnectionStringValidator.ConnectionStringName;
 
     /// <summary>
     /// Registra <see cref="ExpenseFlowDbContext"/> con SQLite. La base por defecto
@@ -46,8 +47,9 @@ public static class DependencyInjection
     {
         services
             .AddOptions<StorageOptions>()
-            .Bind(
-                configuration.GetSection(StorageOptions.SectionName));
+            .Bind(configuration.GetSection(StorageOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
         services.AddSingleton<IPostConfigureOptions<StorageOptions>, PostConfigureStoragePaths>();
         services.AddScoped<IFileScanner, FileScanner>();
         return services;
@@ -72,7 +74,9 @@ public static class DependencyInjection
     {
         services
             .AddOptions<AzureDocumentIntelligenceOptions>()
-            .Bind(configuration.GetSection(AzureDocumentIntelligenceOptions.SectionName));
+            .Bind(configuration.GetSection(AzureDocumentIntelligenceOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
         services.AddScoped<IReceiptOcrProvider, AzureDocumentIntelligenceReceiptProvider>();
         return services;
     }
@@ -93,7 +97,8 @@ public static class DependencyInjection
         var custom = configuration.GetConnectionString(ConnectionStringName);
         if (string.IsNullOrWhiteSpace(custom))
         {
-            return BuildConnectionStringForPath(ResolveDefaultDatabasePath(hostEnvironment));
+            throw new InvalidOperationException(
+                "ConnectionStrings:ExpenseFlow no está configurada. Debió validarse antes de AddPersistence.");
         }
 
         if (IsSqliteKeyValueString(custom))
@@ -108,15 +113,6 @@ public static class DependencyInjection
                 : Path.Combine(hostEnvironment.ContentRootPath, dataSource));
         return BuildConnectionStringForPath(dataSourcePath);
     }
-
-    private static string ResolveDefaultDatabasePath(IHostEnvironment hostEnvironment) =>
-        Path.GetFullPath(
-            Path.Combine(
-                hostEnvironment.ContentRootPath,
-                "..",
-                "..",
-                "data",
-                "expenseflow.db"));
 
     private static bool IsSqliteKeyValueString(string value) =>
         value.Contains("Data Source", StringComparison.OrdinalIgnoreCase) ||

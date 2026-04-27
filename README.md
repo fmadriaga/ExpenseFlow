@@ -7,6 +7,50 @@ Procesamiento de tickets (OCR) desde una carpeta sincronizada, con persistencia 
 - [.NET 9 SDK](https://dotnet.microsoft.com/download) (misma línea major que el target de los proyectos)
 - [Herramienta `dotnet-ef`](https://learn.microsoft.com/ef/core/cli/dotnet) (para migraciones: `dotnet tool install --global dotnet-ef` o manifiesto local bajo `.config/`)
 
+## Configuración y variables de entorno (TASK-008)
+
+El Worker valida al arranque la cadena SQLite y las opciones tipadas (`Storage`, `AzureDocumentIntelligence`, `Worker`). **No subas al repositorio** `ApiKey` ni endpoints reales de Azure: usa User Secrets o variables de entorno.
+
+En .NET, la jerarquía en variables de entorno usa **doble guion bajo** (`__`) como separador de sección y clave.
+
+| Variable | Obligatoria | Descripción |
+| --- | --- | --- |
+| `ConnectionStrings__ExpenseFlow` | Sí (Worker) | Ruta o cadena SQLite (p. ej. `../../data/expenseflow.db` relativa al `ContentRoot` del Worker, o `Data Source=...;`). Debe existir en configuración mergeada; si está vacía o ausente, el proceso termina con error claro. |
+| `Storage__Inbox` | Sí* | Ruta del inbox (*tras bind: no vacía; valores por defecto en `appsettings.json`). |
+| `Storage__Processed` | Sí* | Raíz de procesados. |
+| `Storage__Error` | Sí* | Raíz de errores. |
+| `AzureDocumentIntelligence__Endpoint` | Sí* | URL del recurso (en `Production` no puede quedar vacío; en **Development** aplica `appsettings.Development.json` con placeholder). |
+| `AzureDocumentIntelligence__ApiKey` | Sí* | Clave del servicio (misma nota que `Endpoint`). |
+| `Worker__IntervalSeconds` | Sí* | Entero ≥ 1 (por defecto 60 en `appsettings.json`). |
+
+\*Tras la carga de `appsettings.json` + `appsettings.{Environment}.json` + User Secrets + variables de entorno. Con `DOTNET_ENVIRONMENT=Production` y solo el `appsettings.json` base, **Azure** debe definirse por entorno o el arranque falla con `OptionsValidationException`.
+
+### User Secrets (setup local recomendado)
+
+Desde la carpeta del Worker:
+
+```bash
+dotnet user-secrets init --project src/ExpenseFlow.Worker
+dotnet user-secrets set "AzureDocumentIntelligence:Endpoint" "https://<tu-recurso>.cognitiveservices.azure.com/" --project src/ExpenseFlow.Worker
+dotnet user-secrets set "AzureDocumentIntelligence:ApiKey" "<tu-key>" --project src/ExpenseFlow.Worker
+```
+
+User Secrets tienen prioridad sobre `appsettings` y no se versionan. Para sustituir la cadena SQLite o rutas de `Storage`, puedes usar la misma convención (`ConnectionStrings:ExpenseFlow`, `Storage:Inbox`, etc.).
+
+### Entorno Development vs Production
+
+- **`dotnet run --project src/ExpenseFlow.Worker`** usa `launchSettings.json` con `DOTNET_ENVIRONMENT=Development`, carga `appsettings.Development.json` (placeholders de Azure **no válidos para OCR real**) y permite arrancar sin variables extra; para procesar tickets, configura User Secrets con credenciales reales.
+- **Production:** configura todas las claves críticas por entorno o por ficheros desplegados fuera del repo; sin `Endpoint`/`ApiKey` el proceso falla al arranque con mensaje de validación explícito.
+
+### Migraciones EF y entorno
+
+Si ejecutas `dotnet ef` con entorno `Production` y sin Azure configurado, la validación puede fallar. Usa Development al aplicar migraciones en local, por ejemplo (PowerShell):
+
+```powershell
+$env:DOTNET_ENVIRONMENT = 'Development'
+dotnet ef database update --project src/ExpenseFlow.Infrastructure --startup-project src/ExpenseFlow.Worker
+```
+
 ## Estructura del repositorio
 
 | Ruta | Uso |
@@ -31,9 +75,11 @@ dotnet test ExpenseFlow.sln
 
 ## Base de datos (SQLite)
 
-- Fichero por defecto: `data/expenseflow.db` (dos niveles arriba del `ContentRoot` del Worker: raíz del repo). El directorio `data` se crea si no existe.
+- La cadena **`ConnectionStrings:ExpenseFlow` es obligatoria** (ver `appsettings.json`: por defecto
+  `../../data/expenseflow.db` relativa al `ContentRoot` del Worker). El directorio `data` se crea
+  al resolver la ruta si no existe.
 - El fichero de base generado se ignora en el control de versiones (vía `.gitignore`); no lo subas al repositorio.
-- Override opcional: cadena completa SQLite o ruta a fichero (sin `=`) en `ConnectionStrings:ExpenseFlow` (ver `appsettings` o variables de entorno bajo el prefijo de configuración estándar).
+- Override: cadena completa SQLite o ruta a fichero (sin `=`) vía `ConnectionStrings__ExpenseFlow` o User Secrets.
 - Migraciones: proyecto de modelos `src/ExpenseFlow.Infrastructure`, host de arranque `src/ExpenseFlow.Worker`:
 
 ```bash
@@ -71,41 +117,24 @@ El Worker aplica `Migrate()` al arrancar para mantener el esquema al día en des
 
 - El proveedor OCR implementa `IReceiptOcrProvider` y usa Azure Document Intelligence
   (`prebuilt-receipt`).
-- Configura credenciales en `src/ExpenseFlow.Worker/appsettings.json` (o, preferiblemente, en
-  User Secrets / variables de entorno):
-
-```json
-{
-  "AzureDocumentIntelligence": {
-    "Endpoint": "https://<tu-recurso>.cognitiveservices.azure.com/",
-    "ApiKey": "<tu-key>"
-  }
-}
-```
-
-- No incluyas keys reales en el repositorio. Si faltan `Endpoint` o `ApiKey`, el provider falla
-  con un error claro al resolverse desde DI.
-- Variables de entorno equivalentes:
-  - `AzureDocumentIntelligence__Endpoint`
-  - `AzureDocumentIntelligence__ApiKey`
+- **No pongas credenciales reales en `appsettings.json` del repositorio.** En `Production` los
+  campos vacíos del archivo base hacen fallar la validación al arranque; en **Development**,
+  `appsettings.Development.json` trae placeholders no secretos solo para poder arrancar el host
+  (sustituye por User Secrets para llamadas reales a Azure). Tabla de variables: sección
+  **Configuración y variables de entorno** arriba.
 
 ## Worker: ejecución local del pipeline completo (TASK-007)
 
 1. **Carpeta inbox:** debe existir la ruta configurada en `Storage:Inbox` (por defecto
    `storage/familia/inbox` relativa al `ContentRoot` del proyecto Worker). Coloca ahí un ticket
    válido (`jpg`, `jpeg`, `png`, `pdf`, no vacío).
-2. **Azure Document Intelligence** (obligatorio para procesar archivos reales): no dejes `Endpoint`
-   ni `ApiKey` vacíos. Opciones:
-   - User Secrets del proyecto Worker: `dotnet user-secrets set "AzureDocumentIntelligence:Endpoint" "https://..."` y `dotnet user-secrets set "AzureDocumentIntelligence:ApiKey" "..."`.
-   - Variables de entorno (doble guion bajo = jerarquía en .NET):
-     - `AzureDocumentIntelligence__Endpoint`
-     - `AzureDocumentIntelligence__ApiKey`
-3. **Intervalo entre ciclos:** en `appsettings.json`, sección `Worker` → `IntervalSeconds` (por
-   defecto 60), o variable `Worker__IntervalSeconds`.
-4. **Base de datos (opcional):** `ConnectionStrings__ExpenseFlow` si no usas el valor por defecto
-   del `appsettings` (SQLite bajo `data/expenseflow.db` desde la raíz del repo).
-5. **Rutas de almacenamiento (opcional):** `Storage__Inbox`, `Storage__Processed`, `Storage__Error`
-   si no quieres las rutas relativas por defecto.
+2. **Azure Document Intelligence:** para OCR real, configura User Secrets o variables de entorno
+   (ver sección de configuración). Los placeholders de Development no son credenciales válidas.
+3. **Intervalo entre ciclos:** sección `Worker` → `IntervalSeconds` en `appsettings.json` o
+   `Worker__IntervalSeconds`.
+4. **Base de datos:** `ConnectionStrings:ExpenseFlow` obligatoria (valor por defecto en
+   `appsettings.json` apuntando a `data/expenseflow.db`).
+5. **Rutas de almacenamiento (opcional):** `Storage__Inbox`, `Storage__Processed`, `Storage__Error`.
 
 **Comando:**
 
