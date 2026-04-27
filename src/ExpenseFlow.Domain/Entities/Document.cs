@@ -34,7 +34,16 @@ public class Document
 
     public DateTimeOffset CreatedAt { get; set; }
 
+    /// <summary>
+    /// Quién pagó el ticket (miembro de la misma familia). Obligatorio cuando hay <see cref="ExpenseSplits"/>.
+    /// </summary>
+    public int? PaidByFamilyMemberId { get; set; }
+
+    public FamilyMember? PaidByMember { get; set; }
+
     public ICollection<DocumentLine> DocumentLines { get; set; } = new List<DocumentLine>();
+
+    public ICollection<ExpenseSplit> ExpenseSplits { get; set; } = new List<ExpenseSplit>();
 
     public ICollection<ProcessingJob> ProcessingJobs { get; set; } = new List<ProcessingJob>();
 }

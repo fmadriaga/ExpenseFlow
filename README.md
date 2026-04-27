@@ -200,6 +200,8 @@ El proyecto `ExpenseFlow.Api` usa la misma cadena SQLite y la sección `Storage`
 - `GET /documents` — listado paginado (`page`, `pageSize`, opcionalmente `familyId` por defecto `1`, `from`, `to`, `status`, `category`), incluye `category` asignada por el Worker (TASK-012).
 - `GET /documents/{id}` — detalle con líneas y `RawJson` (el listado no incluye `RawJson`); `familyId` opcional.
 - `PATCH /documents/{id}` — edición parcial (campos de negocio: comercio, fecha, total, categoría) para la UI (TASK-019); `familyId` opcional.
+- `POST /documents/{id}/split` — reparto y quién pagó: `paidByFamilyMemberId` y `splits` (cada `familyMemberId` + `percentage`); la suma de porcentajes debe ser 100% (TASK-021).
+- `GET /members/{id}/balance` — balance del miembro: `from`, `to` (DateOnly) y `familyId` (defecto 1); solo documentos con reparto, `OcrStatus=Success` y fecha de transacción en rango.
 - `POST /documents/{id}/reprocess` — marca el documento para reproceso (`OcrStatus` = `Pending`) y, si el fichero está bajo `error/`, lo vuelve a colocar en `inbox/` (mismo hash en base de datos). `422` si el documento ya está en `Success`.
 - `GET /documents/export` — descarga CSV (UTF-8 con BOM) del histórico; opciones `from`, `to`, `status` (como el listado), `delimiter=comma` (defecto) o `delimiter=semicolon` para separador `;` (TASK-013).
 

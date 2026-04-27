@@ -3,6 +3,7 @@ using ExpenseFlow.Application.DTOs;
 using ExpenseFlow.Application.Abstractions;
 using ExpenseFlow.Application.Export;
 using ExpenseFlow.Application.Ocr;
+using ExpenseFlow.Application.Splitting;
 using ExpenseFlow.Domain.Entities;
 using ExpenseFlow.Infrastructure.Configuration;
 using ExpenseFlow.Infrastructure.Data;
@@ -315,6 +316,92 @@ public static class DocumentsEndpoints
                 }
 
                 return Results.Ok(new { message = "Documento marcado para reproceso.", id });
+            });
+
+        group.MapPost(
+            "/{id:int}/split",
+            async Task<IResult> (
+                int id,
+                SetDocumentSplitRequestDto body,
+                ExpenseFlowDbContext db,
+                int familyId = 1,
+                CancellationToken cancellationToken = default) =>
+            {
+                if (!await FamilyExistsAsync(db, familyId, cancellationToken).ConfigureAwait(false))
+                {
+                    return Results.NotFound(new { error = "Familia no encontrada", familyId });
+                }
+
+                if (body.Splits is null || body.Splits.Count == 0)
+                {
+                    return Results.BadRequest(new { error = "Debe indicar al menos una línea de reparto con porcentajes." });
+                }
+
+                var distinctMembers = body.Splits.Select(s => s.FamilyMemberId).Distinct().Count();
+                if (distinctMembers != body.Splits.Count)
+                {
+                    return Results.BadRequest(new { error = "Cada miembro solo puede aparecer una vez en el reparto." });
+                }
+
+                decimal[] percentages;
+                try
+                {
+                    percentages = body.Splits.Select(s => s.Percentage).ToArray();
+                    SplitExpensePercentageValidator.EnsureSumIsHundred(percentages);
+                }
+                catch (ArgumentException ex)
+                {
+                    return Results.BadRequest(new { error = ex.Message });
+                }
+
+                var document = await db.Documents
+                    .Include(d => d.ExpenseSplits)
+                    .FirstOrDefaultAsync(d => d.Id == id && d.FamilyId == familyId, cancellationToken)
+                    .ConfigureAwait(false);
+                if (document is null)
+                {
+                    return Results.NotFound(new { error = "Documento no encontrado", id });
+                }
+
+                var splitMemberIds = body.Splits.Select(s => s.FamilyMemberId).ToList();
+                var membersInFamily = await db.FamilyMembers
+                    .AsNoTracking()
+                    .Where(m => m.FamilyId == familyId && splitMemberIds.Contains(m.Id))
+                    .Select(m => m.Id)
+                    .ToListAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                if (membersInFamily.Count != splitMemberIds.Count)
+                {
+                    return Results.BadRequest(
+                        new { error = "Algún miembro del reparto no pertenece a esta familia." });
+                }
+
+                var paidOk = await db.FamilyMembers
+                    .AsNoTracking()
+                    .AnyAsync(
+                        m => m.Id == body.PaidByFamilyMemberId && m.FamilyId == familyId,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (!paidOk)
+                {
+                    return Results.BadRequest(new { error = "Quien pagó debe ser miembro de la familia." });
+                }
+
+                db.ExpenseSplits.RemoveRange(document.ExpenseSplits);
+
+                foreach (var line in body.Splits)
+                {
+                    document.ExpenseSplits.Add(
+                        new ExpenseSplit
+                        {
+                            FamilyMemberId = line.FamilyMemberId,
+                            Percentage = Math.Round(line.Percentage, 2, MidpointRounding.AwayFromZero),
+                        });
+                }
+
+                document.PaidByFamilyMemberId = body.PaidByFamilyMemberId;
+                await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+                return Results.NoContent();
             });
 
         return app;

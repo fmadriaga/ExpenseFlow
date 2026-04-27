@@ -12,7 +12,11 @@ public class ExpenseFlowDbContext : DbContext
 
     public DbSet<Family> Families => Set<Family>();
 
+    public DbSet<FamilyMember> FamilyMembers => Set<FamilyMember>();
+
     public DbSet<Document> Documents => Set<Document>();
+
+    public DbSet<ExpenseSplit> ExpenseSplits => Set<ExpenseSplit>();
 
     public DbSet<DocumentLine> DocumentLines => Set<DocumentLine>();
 
@@ -30,6 +34,17 @@ public class ExpenseFlowDbContext : DbContext
             b.Property(f => f.ErrorPath).IsRequired();
         });
 
+        modelBuilder.Entity<FamilyMember>(b =>
+        {
+            b.ToTable("FamilyMembers");
+            b.HasKey(m => m.Id);
+            b.Property(m => m.Name).IsRequired();
+            b.HasOne(m => m.Family)
+                .WithMany(f => f.Members)
+                .HasForeignKey(m => m.FamilyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<Document>(b =>
         {
             b.ToTable("Documents");
@@ -45,6 +60,10 @@ public class ExpenseFlowDbContext : DbContext
                 .WithMany(f => f.Documents)
                 .HasForeignKey(d => d.FamilyId)
                 .OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(d => d.PaidByMember)
+                .WithMany()
+                .HasForeignKey(d => d.PaidByFamilyMemberId)
+                .OnDelete(DeleteBehavior.SetNull);
             b.HasMany(d => d.DocumentLines)
                 .WithOne(l => l.Document)
                 .HasForeignKey(l => l.DocumentId)
@@ -53,6 +72,22 @@ public class ExpenseFlowDbContext : DbContext
                 .WithOne(j => j.Document)
                 .HasForeignKey(j => j.DocumentId)
                 .OnDelete(DeleteBehavior.Cascade);
+            b.HasMany(d => d.ExpenseSplits)
+                .WithOne(s => s.Document)
+                .HasForeignKey(s => s.DocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ExpenseSplit>(b =>
+        {
+            b.ToTable("ExpenseSplits");
+            b.HasKey(s => s.Id);
+            b.Property(s => s.Percentage).HasPrecision(5, 2);
+            b.HasIndex(s => new { s.DocumentId, s.FamilyMemberId }).IsUnique();
+            b.HasOne(s => s.FamilyMember)
+                .WithMany(m => m.ExpenseSplits)
+                .HasForeignKey(s => s.FamilyMemberId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<DocumentLine>(b =>

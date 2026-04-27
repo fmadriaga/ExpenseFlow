@@ -106,7 +106,7 @@ emplazadas en `Infrastructure/Migrations` (`ExpenseFlowDbContext`).
 - **Entidades (Domain):** `Document` (campos: `FilePath`, `FileHash`, datos normalizados del
   ticket: `MerchantName`, `TransactionDate`, `Currency`, `TotalAmount`, `TaxAmount`, `Confidence`,
   m?s `RawJson` para auditor?a OCR, `OcrStatus`, `ErrorMessage`, `Category` (texto; por defecto
-  `otros`, TASK-012), `CreatedAt`), `DocumentLine`
+  `otros`, TASK-012), `PaidByFamilyMemberId` opcional (qui?n pag? el ticket, TASK-021), `CreatedAt`), `DocumentLine`
   (`Description`, `Quantity`, `UnitPrice`, `Amount`, `Currency`), `ProcessingJob`.
 - **Normalizaci?n (TASK-005):** contrato `IReceiptNormalizer` (`Abstractions/`) e implementaci?n
   `ReceiptNormalizer` (`Application/Services/`) mapean `OcrResult` m?s `FilePath`/`FileHash` a
@@ -156,6 +156,11 @@ Tablas:
   trata violaci?n como duplicado l?gico en la misma familia)
 - `DocumentLines`
 - `ProcessingJobs`
+
+### Divisi?n de gastos (TASK-021)
+- **Entidades:** `FamilyMember` (nombre por familia), `ExpenseSplit` (`DocumentId`, `FamilyMemberId`, `Percentage` decimal 5,2; ?nico por documento y miembro). `Document` puede indicar `PaidByFamilyMemberId`.
+- **Application:** validaci?n de que los porcentajes de un reparto sumen 100% (`SplitExpensePercentageValidator`); c?lculo de balance en memoria (`MemberPeriodBalanceCalculator`) a partir de documentos con splits.
+- **API:** `POST /documents/{id}/split` sustituye los splits del documento y fija qui?n pag?; `GET /members/{id}/balance?from=&to=&familyId=` devuelve `totalPaid`, `totalShare`, `net` para el per?odo (solo documentos con al menos un split, `Success` y `TransactionDate` en rango).
 
 ### API (TASK-010)
 Host `ExpenseFlow.Api` (ASP.NET Core, minimal API) con:

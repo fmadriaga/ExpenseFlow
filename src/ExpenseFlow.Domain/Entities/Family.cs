@@ -16,4 +16,6 @@ public class Family
     public string ErrorPath { get; set; } = string.Empty;
 
     public ICollection<Document> Documents { get; set; } = new List<Document>();
+
+    public ICollection<FamilyMember> Members { get; set; } = new List<FamilyMember>();
 }
