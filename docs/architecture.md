@@ -91,7 +91,9 @@ emplazadas en `Infrastructure/Migrations` (`ExpenseFlowDbContext`).
 - **Configuraci?n y secretos (TASK-008):** `ConnectionStrings:ExpenseFlow` es obligatoria (no vac?a)
   antes de registrar EF; `StorageOptions`, `AzureDocumentIntelligenceOptions` y `WorkerOptions` usan
   validaci?n con anotaciones (`ValidateDataAnnotations` + `ValidateOnStart`) y resoluci?n forzada al
-  inicio del Worker antes de `Migrate()`. En `Production`, `AzureDocumentIntelligence` debe
+  inicio del Worker antes de `Migrate()`. **TASK-016:** `IValidateOptions<AzureDocumentIntelligenceOptions>`
+  exige `Endpoint` como URI absoluta `http` o `https` (fail-fast; mensaje con el valor recibido).
+  En `Production`, `AzureDocumentIntelligence` debe
   configurarse v?a entorno o secretos; `appsettings.Development.json` incluye placeholders no
   reales solo para desarrollo local y herramientas (sustituir por User Secrets para OCR real).
   Convenci?n de entorno .NET: Seccion__Clave (ejemplos:

@@ -79,6 +79,7 @@ public static class DependencyInjection
             .Bind(configuration.GetSection(AzureDocumentIntelligenceOptions.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<AzureDocumentIntelligenceOptions>, AzureDocumentIntelligenceOptionsValidator>();
         services.AddScoped<IReceiptOcrProvider, AzureDocumentIntelligenceReceiptProvider>();
         return services;
     }
