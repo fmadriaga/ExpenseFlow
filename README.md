@@ -15,7 +15,7 @@ En .NET, la jerarquía en variables de entorno usa **doble guion bajo** (`__`) c
 
 | Variable | Obligatoria | Descripción |
 | --- | --- | --- |
-| `ConnectionStrings__ExpenseFlow` | Sí (Worker) | Ruta o cadena SQLite (p. ej. `../../data/expenseflow.db` relativa al `ContentRoot` del Worker, o `Data Source=...;`). Debe existir en configuración mergeada; si está vacía o ausente, el proceso termina con error claro. |
+| `ConnectionStrings__ExpenseFlow` | Sí (Worker y Api) | Ruta o cadena SQLite (p. ej. `../../data/expenseflow.db` relativa al `ContentRoot` del proyecto, o `Data Source=...;`). Debe existir en configuración mergeada; si está vacía o ausente, el proceso termina con error claro. |
 | `Storage__Inbox` | Sí* | Ruta del inbox (*tras bind: no vacía; valores por defecto en `appsettings.json`). |
 | `Storage__Processed` | Sí* | Raíz de procesados. |
 | `Storage__Error` | Sí* | Raíz de errores. |
@@ -59,7 +59,7 @@ dotnet ef database update --project src/ExpenseFlow.Infrastructure --startup-pro
 | `src/ExpenseFlow.Application` | Casos de uso, contratos, DTOs internos |
 | `src/ExpenseFlow.Infrastructure` | EF Core (`ExpenseFlowDbContext`, migraciones), integraciones, filesystem |
 | `src/ExpenseFlow.Worker` | Proceso por lotes en segundo plano |
-| `src/ExpenseFlow.Api` | Host HTTP para evolución futura |
+| `src/ExpenseFlow.Api` | API HTTP de consulta de documentos (TASK-010) |
 | `docs/` | Visión, arquitectura y tasks |
 | `tests/ExpenseFlow.IntegrationTests` | Pruebas de integración (SQLite, escáner, mapper OCR, FileMover, Worker) |
 | `tests/ExpenseFlow.Application.Tests` | Pruebas unitarias (p. ej. normalizador de recibos) |
@@ -165,10 +165,34 @@ falla el pipeline del archivo, acaba en `error/yyyy/MM/` (salvo errores extremos
   `System=Warning`, `Console.IncludeScopes=true`.
 - Seguridad: los logs no deben contener `ApiKey` ni connection strings.
 
+## Api de consulta (TASK-010)
+
+El proyecto `ExpenseFlow.Api` usa la misma cadena SQLite y la sección `Storage` que el Worker
+(`appsettings.json`). Al arrancar aplica migraciones y expone:
+
+- `GET /documents` — listado paginado (`page`, `pageSize`, opcionalmente `from`, `to`, `status`).
+- `GET /documents/{id}` — detalle con líneas y `RawJson` (el listado no incluye `RawJson`).
+
+**Ejecutar en local:**
+
+```bash
+dotnet run --project src/ExpenseFlow.Api
+```
+
+Con el perfil `http` de `launchSettings.json` la URL base suele ser `http://localhost:5287`
+(mira la consola al arrancar). Ejemplos:
+
+```bash
+curl -s http://localhost:5287/documents
+curl -s http://localhost:5287/documents/1
+```
+
+Si la base está vacía, el listado devuelve `items` vacío y `totalCount` 0. Tras procesar tickets con el Worker, los mismos documentos son visibles por la API.
+
 ## Ejecutar (referencia rápida)
 
 - Worker: `dotnet run --project src/ExpenseFlow.Worker` — detalle y variables en la sección anterior.
-- API: `dotnet run --project src/ExpenseFlow.Api`
+- API: `dotnet run --project src/ExpenseFlow.Api` — ver sección **Api de consulta** arriba.
 
 ## Referencia de capas
 

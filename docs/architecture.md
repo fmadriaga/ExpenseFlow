@@ -77,8 +77,10 @@ emplazadas en `Infrastructure/Migrations` (`ExpenseFlowDbContext`).
 - **Contexto y DI:** `ExpenseFlowDbContext` (namespace `ExpenseFlow.Infrastructure.Data`) se
   configura con SQLite. El registro ocurre v?a
   `ExpenseFlow.Infrastructure.DependencyInjection.AddPersistence` (`AddDbContext`); el
-  `Program` del **Worker** invoca ese m?todo. La **Api** no registra a?n el DbContext (no
-  requerido en el corte actual).
+  `Program` del **Worker** invoca ese m?todo. El `Program` de la **Api** (TASK-010) tambi?n
+  invoca `AddPersistence` y `AddFileScanning` para compartir la misma base SQLite; aplica
+  `Migrate()` al arranque **salvo** en el entorno `Testing` (pruebas con `WebApplicationFactory`,
+  que preparan el esquema de forma aislada).
 - **Configuraci?n y secretos (TASK-008):** `ConnectionStrings:ExpenseFlow` es obligatoria (no vac?a)
   antes de registrar EF; `StorageOptions`, `AzureDocumentIntelligenceOptions` y `WorkerOptions` usan
   validaci?n con anotaciones (`ValidateDataAnnotations` + `ValidateOnStart`) y resoluci?n forzada al
@@ -131,9 +133,21 @@ Tablas:
 - `DocumentLines`
 - `ProcessingJobs`
 
-### API
-No es obligatoria para el primer corte funcional, pero la soluci?n ya debe quedar
-preparada para exponer una API m?nima m?s adelante.
+### API (TASK-010)
+Host `ExpenseFlow.Api` (ASP.NET Core, minimal API) con:
+
+- **Registro:** `AddPersistence` + `AddFileScanning` (misma base y secci?n `Storage` que el Worker
+  en `appsettings.json`); validaci?n de cadena v?a `ExpenseFlowConnectionStringValidator` al inicio;
+  `Migrate()` al arranque excepto en entorno `Testing`.
+- **DTOs (Application):** `DocumentSummaryDto` (listado, sin `FilePath` ni `RawJson`),
+  `DocumentDetailDto` (incluye `FilePath`, `RawJson`, l?neas), `DocumentLineDto`,
+  `DocumentsListResponseDto` (`items`, `page`, `pageSize`, `totalCount`). `Category` reservada
+  (null hasta que exista en dominio).
+- **Endpoints** (`MapDocumentsEndpoints`): `GET /documents` (paginaci?n `page` / `pageSize` m?x. 100,
+  filtros opcionales `from` / `to` en `DateOnly`, `status` = `OcrStatus`); orden del listado por
+  `Id` descendente (SQLite/EF no ordenan por `DateTimeOffset` en servidor; el orden se alinea con
+  inserciones recientes). `GET /documents/{id}` con l?neas y `RawJson`; 404 con cuerpo JSON
+  `error` + `id` si no existe.
 
 ## Capas
 
@@ -159,7 +173,7 @@ preparada para exponer una API m?nima m?s adelante.
 - Orquestaci?n peri?dica del proceso batch
 
 ### Api
-- Endpoints futuros para consultar documentos y reprocesar
+- Consulta de documentos (TASK-010); reproceso y m?s funciones en tasks posteriores
 
 ## Principios arquitect?nicos
 - Simplicidad primero
