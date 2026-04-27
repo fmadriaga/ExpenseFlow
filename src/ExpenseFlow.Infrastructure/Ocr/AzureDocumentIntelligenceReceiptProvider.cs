@@ -14,6 +14,7 @@ public sealed class AzureDocumentIntelligenceReceiptProvider : IReceiptOcrProvid
     private const string PrebuiltReceiptModelId = "prebuilt-receipt";
 
     private readonly DocumentIntelligenceClient _client;
+    private readonly IOptions<AzureDocumentIntelligenceOptions> _options;
     private readonly ILogger<AzureDocumentIntelligenceReceiptProvider> _logger;
 
     public AzureDocumentIntelligenceReceiptProvider(
@@ -36,6 +37,7 @@ public sealed class AzureDocumentIntelligenceReceiptProvider : IReceiptOcrProvid
         _client = new DocumentIntelligenceClient(
             new Uri(config.Endpoint),
             new AzureKeyCredential(config.ApiKey));
+        _options = options;
         _logger = logger;
     }
 
@@ -54,31 +56,36 @@ public sealed class AzureDocumentIntelligenceReceiptProvider : IReceiptOcrProvid
                 $"OCR source file not found: {filePath}", filePath);
         }
 
-        try
-        {
-            await using var stream = new FileStream(
-                filePath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read);
-            var source = BinaryData.FromStream(stream);
-
-            var operation = await _client.AnalyzeDocumentAsync(
-                WaitUntil.Completed,
-                PrebuiltReceiptModelId,
-                source,
-                cancellationToken);
-
-            var rawJson = JsonSerializer.Serialize(operation.Value);
-            return AzureReceiptResultMapper.MapFromRawJson(rawJson);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(
-                ex,
-                "Azure OCR receipt analysis failed for file {FilePath}.",
-                filePath);
-            throw;
-        }
+        var ocrOptions = _options.Value;
+        return await OcrAnalysisRetryHelper.ExecuteWithRetryAsync(
+            async token =>
+            {
+                await using var stream = new FileStream(
+                    filePath,
+                    new FileStreamOptions
+                    {
+                        Mode = FileMode.Open,
+                        Access = FileAccess.Read,
+                        Share = FileShare.Read,
+                        BufferSize = 1024 * 8,
+                        Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
+                    });
+                var source = BinaryData.FromStream(stream);
+                var operation = await _client
+                    .AnalyzeDocumentAsync(
+                        WaitUntil.Completed,
+                        PrebuiltReceiptModelId,
+                        source,
+                        token)
+                    .ConfigureAwait(false);
+                var rawJson = JsonSerializer.Serialize(operation.Value);
+                return AzureReceiptResultMapper.MapFromRawJson(rawJson);
+            },
+            ocrOptions.MaxRetries,
+            ocrOptions.BaseDelaySeconds,
+            _logger,
+            filePath,
+            cancellationToken)
+            .ConfigureAwait(false);
     }
 }

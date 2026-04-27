@@ -63,6 +63,13 @@ Implementaci?n inicial en Infrastructure:
   `prebuilt-receipt`. Endpoint y key se toman desde configuraci?n (`AzureDocumentIntelligence`:
   `Endpoint`, `ApiKey`) mediante opciones tipadas; no se exponen tipos del SDK fuera de
   Infrastructure.
+- **Reintentos (TASK-015):** `OcrAnalysisRetryHelper` en Infrastructure aplica reintentos con
+  backoff exponencial sobre `AnalyzeDocumentAsync` seg?n `MaxRetries` (reintentos adicionales) y
+  `BaseDelaySeconds` en `AzureDocumentIntelligenceOptions`. Solo errores transitorios
+  (`RequestFailedException` 429/503/408/5xx, `HttpRequestException`, `IOException`,
+  `TaskCanceledException` por timeout, etc.); cada reintento se registra en `LogWarning` con
+  n?mero de intento, m?ximo e intervalo. Tras agotar reintentos se propaga la excepci?n (flujo
+  de error del Worker sin cambios).
 - **Registro DI:** `AddOcrProviders` registra el provider en Infrastructure; `ExpenseFlowWorker`
   lo resuelve por scope y lo invoca en el pipeline por archivo.
 - **Extensibilidad:** Application depende solo de `IReceiptOcrProvider`; para incorporar nuevos

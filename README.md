@@ -21,6 +21,8 @@ En .NET, la jerarquía en variables de entorno usa **doble guion bajo** (`__`) c
 | `Storage__Error` | Sí* | Raíz de errores. |
 | `AzureDocumentIntelligence__Endpoint` | Sí* | URL del recurso (en `Production` no puede quedar vacío; en **Development** aplica `appsettings.Development.json` con placeholder). |
 | `AzureDocumentIntelligence__ApiKey` | Sí* | Clave del servicio (misma nota que `Endpoint`). |
+| `AzureDocumentIntelligence__MaxRetries` | No | Reintentos adicionales tras un fallo **transitorio** del OCR (0–20; por defecto 3, TASK-015). |
+| `AzureDocumentIntelligence__BaseDelaySeconds` | No | Segundos base del backoff exponencial entre reintentos (0,1–300; por defecto 1). |
 | `Worker__IntervalSeconds` | Sí* | Entero ≥ 1 (por defecto 60 en `appsettings.json`). |
 
 \*Tras la carga de `appsettings.json` + `appsettings.{Environment}.json` + User Secrets + variables de entorno. Con `DOTNET_ENVIRONMENT=Production` y solo el `appsettings.json` base, **Azure** debe definirse por entorno o el arranque falla con `OptionsValidationException`.
