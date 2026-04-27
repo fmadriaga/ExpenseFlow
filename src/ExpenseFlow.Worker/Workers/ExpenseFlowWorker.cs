@@ -4,6 +4,7 @@ using ExpenseFlow.Application.Options;
 using ExpenseFlow.Application.Ocr;
 using ExpenseFlow.Application.Processing;
 using ExpenseFlow.Domain.Entities;
+using ExpenseFlow.Infrastructure.Configuration;
 using ExpenseFlow.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -89,14 +90,56 @@ public sealed class ExpenseFlowWorker : BackgroundService
         var processedFailed = 0;
 
         using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ExpenseFlowDbContext>();
+        var hostEnv = scope.ServiceProvider.GetRequiredService<IHostEnvironment>();
         var scanner = scope.ServiceProvider.GetRequiredService<IFileScanner>();
 
-        IReadOnlyList<ScanResult> pending;
+        var families = await db.Families
+            .AsNoTracking()
+            .OrderBy(f => f.Id)
+            .ToListAsync(stoppingToken)
+            .ConfigureAwait(false);
+        if (families.Count == 0)
+        {
+            _logger.LogWarning("No families in database; nothing to scan. JobId: {JobId}", jobId);
+            LogJobFinished(jobId, jobStarted, 0, 0, 0);
+            return;
+        }
+
+        var pending = new List<ScanResult>();
         try
         {
-            pending = await scanner
-                .GetPendingFilesToProcessAsync(stoppingToken)
-                .ConfigureAwait(false);
+            foreach (var family in families)
+            {
+                string inboxAbs;
+                string procAbs;
+                string errAbs;
+                try
+                {
+                    inboxAbs = ContentRootPathResolver.Resolve(hostEnv.ContentRootPath, family.InboxPath);
+                    procAbs = ContentRootPathResolver.Resolve(hostEnv.ContentRootPath, family.ProcessedPath);
+                    errAbs = ContentRootPathResolver.Resolve(hostEnv.ContentRootPath, family.ErrorPath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Invalid storage path for family. JobId: {JobId}, FamilyId: {FamilyId}",
+                        jobId,
+                        family.Id);
+                    continue;
+                }
+
+                var part = await scanner
+                    .GetPendingFilesToProcessAsync(
+                        family.Id,
+                        inboxAbs,
+                        procAbs,
+                        errAbs,
+                        stoppingToken)
+                    .ConfigureAwait(false);
+                pending.AddRange(part);
+            }
         }
         catch (Exception ex)
         {
@@ -217,7 +260,10 @@ public sealed class ExpenseFlowWorker : BackgroundService
             var pending = await db.Documents
                 .Include(d => d.DocumentLines)
                 .FirstOrDefaultAsync(
-                    d => d.FileHash == scan.FileHash && d.OcrStatus == ReceiptOcrStatuses.Pending,
+                    d =>
+                        d.FamilyId == scan.FamilyId &&
+                        d.FileHash == scan.FileHash &&
+                        d.OcrStatus == ReceiptOcrStatuses.Pending,
                     cancellationToken)
                 .ConfigureAwait(false);
 
@@ -236,6 +282,7 @@ public sealed class ExpenseFlowWorker : BackgroundService
             else
             {
                 document = normalized;
+                document.FamilyId = scan.FamilyId;
                 document.ProcessingJobs.Add(
                     new ProcessingJob
                     {
@@ -250,7 +297,7 @@ public sealed class ExpenseFlowWorker : BackgroundService
 
             await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (DbUpdateException dbEx) when (IsSqliteUniqueConstraintOnDocumentsFileHash(dbEx))
+        catch (DbUpdateException dbEx) when (IsSqliteUniqueConstraintOnDocumentsFamilyHash(dbEx))
         {
             db.ChangeTracker.Clear();
             _logger.LogWarning(
@@ -291,7 +338,7 @@ public sealed class ExpenseFlowWorker : BackgroundService
         try
         {
             var destinationPath = await mover
-                .MoveToProcessedAsync(scan.FullPath, cancellationToken)
+                .MoveToProcessedAsync(scan.FullPath, scan.ProcessedStorageRoot, cancellationToken)
                 .ConfigureAwait(false);
             _logger.LogInformation(
                 "File moved to processed. JobId: {JobId}, FileName: {FileName}, Destination: {Destination}",
@@ -314,6 +361,7 @@ public sealed class ExpenseFlowWorker : BackgroundService
                     moveEx,
                     mover,
                     scan.FullPath,
+                    scan.ErrorStorageRoot,
                     cancellationToken)
                 .ConfigureAwait(false);
             return false;
@@ -333,6 +381,7 @@ public sealed class ExpenseFlowWorker : BackgroundService
         Exception moveEx,
         IFileMover mover,
         string sourcePath,
+        string errorStorageRoot,
         CancellationToken cancellationToken)
     {
         document.OcrStatus = ReceiptOcrStatuses.Failed;
@@ -349,7 +398,9 @@ public sealed class ExpenseFlowWorker : BackgroundService
 
         if (File.Exists(sourcePath))
         {
-            var movedTo = await mover.MoveToErrorAsync(sourcePath, cancellationToken).ConfigureAwait(false);
+            var movedTo = await mover
+                .MoveToErrorAsync(sourcePath, errorStorageRoot, cancellationToken)
+                .ConfigureAwait(false);
             _logger.LogWarning(
                 "File moved to error after processed move failure. JobId: {JobId}, FileName: {FileName}, Reason: {Reason}, Destination: {Destination}",
                 jobId,
@@ -375,6 +426,7 @@ public sealed class ExpenseFlowWorker : BackgroundService
         {
             var errorDoc = new Document
             {
+                FamilyId = scan.FamilyId,
                 FilePath = scan.FullPath,
                 FileHash = scan.FileHash,
                 CreatedAt = fileStarted,
@@ -394,7 +446,7 @@ public sealed class ExpenseFlowWorker : BackgroundService
             db.Documents.Add(errorDoc);
             await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (DbUpdateException dbEx) when (IsSqliteUniqueConstraintOnDocumentsFileHash(dbEx))
+        catch (DbUpdateException dbEx) when (IsSqliteUniqueConstraintOnDocumentsFamilyHash(dbEx))
         {
             db.ChangeTracker.Clear();
             _logger.LogWarning(
@@ -408,7 +460,7 @@ public sealed class ExpenseFlowWorker : BackgroundService
                 try
                 {
                     var dest = await mover
-                        .MoveToProcessedAsync(scan.FullPath, cancellationToken)
+                        .MoveToProcessedAsync(scan.FullPath, scan.ProcessedStorageRoot, cancellationToken)
                         .ConfigureAwait(false);
                     _logger.LogWarning(
                         "Duplicate hash after failure: file moved to processed. JobId: {JobId}, FullPath: {FullPath}, FileHash: {FileHash}, Destination: {Destination}",
@@ -448,7 +500,9 @@ public sealed class ExpenseFlowWorker : BackgroundService
         {
             if (File.Exists(scan.FullPath))
             {
-                var movedTo = await mover.MoveToErrorAsync(scan.FullPath, cancellationToken).ConfigureAwait(false);
+                var movedTo = await mover
+                    .MoveToErrorAsync(scan.FullPath, scan.ErrorStorageRoot, cancellationToken)
+                    .ConfigureAwait(false);
                 _logger.LogWarning(
                     "File moved to error. JobId: {JobId}, FileName: {FileName}, FullPath: {FullPath}, Reason: {Reason}, Destination: {Destination}",
                     jobId,
@@ -491,7 +545,7 @@ public sealed class ExpenseFlowWorker : BackgroundService
         try
         {
             var dest = await mover
-                .MoveToProcessedAsync(scan.FullPath, cancellationToken)
+                .MoveToProcessedAsync(scan.FullPath, scan.ProcessedStorageRoot, cancellationToken)
                 .ConfigureAwait(false);
             _logger.LogWarning(
                 "Duplicate hash: file moved to processed. JobId: {JobId}, FullPath: {FullPath}, FileHash: {FileHash}, Destination: {Destination}",
@@ -514,12 +568,23 @@ public sealed class ExpenseFlowWorker : BackgroundService
         }
     }
 
-    private static bool IsSqliteUniqueConstraintOnDocumentsFileHash(DbUpdateException ex)
+    private static bool IsSqliteUniqueConstraintOnDocumentsFamilyHash(DbUpdateException ex)
     {
         for (var e = (Exception?)ex; e is not null; e = e.InnerException)
         {
-            if (e.Message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase) &&
-                e.Message.Contains("FileHash", StringComparison.Ordinal))
+            if (!e.Message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (e.Message.Contains("Documents.FamilyId", StringComparison.Ordinal) &&
+                e.Message.Contains("Documents.FileHash", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            // Migraciones antiguas u otros índices
+            if (e.Message.Contains("FileHash", StringComparison.Ordinal))
             {
                 return true;
             }

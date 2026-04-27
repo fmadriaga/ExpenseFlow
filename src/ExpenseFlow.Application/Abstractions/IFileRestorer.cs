@@ -6,13 +6,28 @@ namespace ExpenseFlow.Application.Abstractions;
 public interface IFileRestorer
 {
     /// <summary>
-    /// Busca recursivamente bajo la raíz de error un archivo cuyo SHA-256 (hex) coincide con <paramref name="fileHashHex"/>.
+    /// Busca bajo <c>Storage:Error</c> del host.
     /// </summary>
     Task<string?> FindSourcePathInErrorTreeAsync(string fileHashHex, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Mueve un archivo desde una ruta existente bajo error hacia el inbox (primer nivel).
-    /// Devuelve la ruta destino final o null si el origen no existe.
+    /// Busca recursivamente bajo <paramref name="errorStorageRoot"/> un archivo cuyo SHA-256 coincide con el hash.
+    /// </summary>
+    Task<string?> FindSourcePathInErrorTreeAsync(
+        string fileHashHex,
+        string errorStorageRoot,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Restaura al inbox configurado en <c>Storage:Inbox</c>.
     /// </summary>
     Task<string?> RestoreToInboxAsync(string sourcePath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Mueve el archivo al inbox bajo <paramref name="inboxStorageRoot"/>.
+    /// </summary>
+    Task<string?> RestoreToInboxAsync(
+        string sourcePath,
+        string inboxStorageRoot,
+        CancellationToken cancellationToken = default);
 }

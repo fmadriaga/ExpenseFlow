@@ -111,16 +111,13 @@ El Worker aplica `Migrate()` al arrancar para mantener el esquema al día en des
   `DocumentLines`). No cambia el procedimiento habitual: al ejecutar el Worker se aplica sola; solo
   necesitas `dotnet ef database update` manual si mantienes la SQLite sin arrancar el Worker.
 
-## Rutas de almacenamiento y escáner (TASK-003)
+## Rutas de almacenamiento y escáner (TASK-003 / TASK-020)
 
-- La sección `Storage` en `src/ExpenseFlow.Worker/appsettings.json` define por defecto (relativas al
-  `ContentRoot` del Worker) `Inbox`, `Processed` y `Error` bajo `../../storage/familia/...`.
-- El `IFileScanner` usa solo la ruta de **inbox** para listar y filtrar archivos; *processed* y
-  *error* las usa `IFileMover` al cerrar cada ítem del pipeline (TASK-007).
-- Puedes sobrescribir rutas (absoluta o relativa al proyecto Worker) o seguir los valores
-  predeterminados, coherentes con la estructura `storage/familia/...` del repositorio.
-- La carpeta de **inbox** debe existir para procesar ficheros (p. ej. creada por sincronización
-  o manualmente); si no existe, el escáner registra una advertencia y no devuelve candidatos.
+- **Multi-familia (TASK-020):** las carpetas por perfil están en la tabla `Families` (inbox / processed / error por fila). El Worker itera cada familia en cada ciclo; las rutas son relativas al `ContentRoot` del Worker o absolutas (misma resolución que antes para `Storage`).
+- La sección `Storage` en `appsettings` del **Worker** y de la **Api** sigue siendo útil como referencia y para `IFileMover`/`IFileRestorer` con las sobrecargas “por defecto”; el escaneo batch usado por el Worker no lee `Storage:Inbox` para listar — lee las filas de `Families`.
+- Tras `dotnet ef database update`, existen al menos la familia `1` (rutas por defecto bajo `storage/familia/...`) y la `2` (ejemplo bajo `storage/familia2/...`). Crea las carpetas o ajusta las filas en BD si hace falta.
+- `IFileScanner` recibe inbox y raíces processed/error ya resueltas por familia; `IFileMover` mueve usando esa familia (TASK-007).
+- Si el **inbox** de una familia no existe, el escáner registra advertencia y no devuelve candidatos para esa familia.
 
 ## Movimiento a processed/error (TASK-006)
 
@@ -200,9 +197,9 @@ dotnet-counters monitor -p <pid> --counters ExpenseFlow.Worker
 El proyecto `ExpenseFlow.Api` usa la misma cadena SQLite y la sección `Storage` que el Worker
 (`appsettings.json`). Al arrancar aplica migraciones y expone:
 
-- `GET /documents` — listado paginado (`page`, `pageSize`, opcionalmente `from`, `to`, `status`, `category`), incluye `category` asignada por el Worker (TASK-012).
-- `GET /documents/{id}` — detalle con líneas y `RawJson` (el listado no incluye `RawJson`).
-- `PATCH /documents/{id}` — edición parcial (campos de negocio: comercio, fecha, total, categoría) para la UI (TASK-019).
+- `GET /documents` — listado paginado (`page`, `pageSize`, opcionalmente `familyId` por defecto `1`, `from`, `to`, `status`, `category`), incluye `category` asignada por el Worker (TASK-012).
+- `GET /documents/{id}` — detalle con líneas y `RawJson` (el listado no incluye `RawJson`); `familyId` opcional.
+- `PATCH /documents/{id}` — edición parcial (campos de negocio: comercio, fecha, total, categoría) para la UI (TASK-019); `familyId` opcional.
 - `POST /documents/{id}/reprocess` — marca el documento para reproceso (`OcrStatus` = `Pending`) y, si el fichero está bajo `error/`, lo vuelve a colocar en `inbox/` (mismo hash en base de datos). `422` si el documento ya está en `Success`.
 - `GET /documents/export` — descarga CSV (UTF-8 con BOM) del histórico; opciones `from`, `to`, `status` (como el listado), `delimiter=comma` (defecto) o `delimiter=semicolon` para separador `;` (TASK-013).
 
@@ -226,7 +223,7 @@ Si la base está vacía, el listado devuelve `items` vacío y `totalCount` 0. Tr
 
 ## UI web de revisión (TASK-019)
 
-- Proyecto `ExpenseFlow.Web` (Blazor Server). La URL de la API se configura con `ExpenseFlowApi:BaseUrl` (por defecto `http://localhost:5287` en `appsettings.json`).
+- Proyecto `ExpenseFlow.Web` (Blazor Server). La URL de la API se configura con `ExpenseFlowApi:BaseUrl` (por defecto `http://localhost:5287` en `appsettings.json`); `ExpenseFlowApi:FamilyId` filtra por perfil (por defecto `1`, TASK-020).
 - Arranca la **Api** y luego la web:
 
 ```bash

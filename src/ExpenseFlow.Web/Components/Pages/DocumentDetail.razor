@@ -1,6 +1,7 @@
 @page "/documents/{DocumentId:int}"
 @rendermode InteractiveServer
 @inject IHttpClientFactory HttpFactory
+@inject IConfiguration Configuration
 
 <PageTitle>Documento @DocumentId</PageTitle>
 
@@ -76,9 +77,11 @@ else
     private string _totalStr = "";
     private string? _error;
     private string? _saveMsg;
+    private int _familyId = 1;
 
     protected override async Task OnParametersSetAsync()
     {
+        _familyId = Configuration.GetValue("ExpenseFlowApi:FamilyId", 1);
         await LoadAsync();
     }
 
@@ -89,7 +92,8 @@ else
         try
         {
             var client = HttpFactory.CreateClient("ExpenseFlowApi");
-            var dto = await client.GetFromJsonAsync<DocumentDetailDto>($"documents/{DocumentId}");
+            var dto = await client.GetFromJsonAsync<DocumentDetailDto>(
+                $"documents/{DocumentId}?familyId={_familyId}");
             _detail = dto;
             if (dto is null)
             {
@@ -135,7 +139,7 @@ else
         try
         {
             var client = HttpFactory.CreateClient("ExpenseFlowApi");
-            var resp = await client.PatchAsJsonAsync($"documents/{DocumentId}", body);
+            var resp = await client.PatchAsJsonAsync($"documents/{DocumentId}?familyId={_familyId}", body);
             resp.EnsureSuccessStatusCode();
             _saveMsg = "Guardado.";
             await LoadAsync();

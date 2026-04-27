@@ -4,6 +4,10 @@ public class Document
 {
     public int Id { get; set; }
 
+    public int FamilyId { get; set; }
+
+    public Family Family { get; set; } = null!;
+
     public string FilePath { get; set; } = string.Empty;
 
     public string FileHash { get; set; } = string.Empty;

@@ -8,13 +8,28 @@ namespace ExpenseFlow.Application.Abstractions;
 public interface IFileMover
 {
     /// <summary>
-    /// Mueve el archivo a <c>{Processed}/yyyy/MM/</c> y devuelve la ruta final (puede diferir
-    /// del nombre preferido si hubo colisión).
+    /// Mueve usando las rutas raíz de la sección <c>Storage</c> del host (Api/reproceso compat).
     /// </summary>
     Task<string> MoveToProcessedAsync(string sourcePath, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Mueve el archivo a <c>{Error}/yyyy/MM/</c> y devuelve la ruta final.
+    /// Mueve el archivo a <c>{processedStorageRoot}/yyyy/MM/</c>.
+    /// </summary>
+    Task<string> MoveToProcessedAsync(
+        string sourcePath,
+        string processedStorageRoot,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Mueve usando la raíz <c>Error</c> de <c>Storage</c>.
     /// </summary>
     Task<string> MoveToErrorAsync(string sourcePath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Mueve el archivo a <c>{errorStorageRoot}/yyyy/MM/</c>.
+    /// </summary>
+    Task<string> MoveToErrorAsync(
+        string sourcePath,
+        string errorStorageRoot,
+        CancellationToken cancellationToken = default);
 }

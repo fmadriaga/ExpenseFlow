@@ -25,8 +25,15 @@ public sealed class FileRestorer : IFileRestorer
     }
 
     /// <inheritdoc />
+    public Task<string?> FindSourcePathInErrorTreeAsync(
+        string fileHashHex,
+        CancellationToken cancellationToken = default) =>
+        FindSourcePathInErrorTreeAsync(fileHashHex, _options.Value.Error, cancellationToken);
+
+    /// <inheritdoc />
     public async Task<string?> FindSourcePathInErrorTreeAsync(
         string fileHashHex,
+        string errorStorageRoot,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(fileHashHex))
@@ -40,14 +47,13 @@ public sealed class FileRestorer : IFileRestorer
             return null;
         }
 
-        var errorRoot = _options.Value.Error;
-        if (string.IsNullOrWhiteSpace(errorRoot))
+        if (string.IsNullOrWhiteSpace(errorStorageRoot))
         {
-            _logger.LogWarning("Error root not configured; cannot search for file to restore.");
+            _logger.LogWarning("Error root not provided; cannot search for file to restore.");
             return null;
         }
 
-        var fullErrorRoot = Path.GetFullPath(errorRoot);
+        var fullErrorRoot = Path.GetFullPath(errorStorageRoot);
         if (!Directory.Exists(fullErrorRoot))
         {
             _logger.LogWarning(
@@ -123,7 +129,14 @@ public sealed class FileRestorer : IFileRestorer
     }
 
     /// <inheritdoc />
-    public Task<string?> RestoreToInboxAsync(string sourcePath, CancellationToken cancellationToken = default)
+    public Task<string?> RestoreToInboxAsync(string sourcePath, CancellationToken cancellationToken = default) =>
+        RestoreToInboxAsync(sourcePath, _options.Value.Inbox, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string?> RestoreToInboxAsync(
+        string sourcePath,
+        string inboxStorageRoot,
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -141,13 +154,12 @@ public sealed class FileRestorer : IFileRestorer
             return Task.FromResult<string?>(null);
         }
 
-        var inboxRoot = _options.Value.Inbox;
-        if (string.IsNullOrWhiteSpace(inboxRoot))
+        if (string.IsNullOrWhiteSpace(inboxStorageRoot))
         {
-            throw new InvalidOperationException("Storage:Inbox is not configured.");
+            throw new InvalidOperationException("Inbox root is not configured.");
         }
 
-        var fullInboxRoot = Path.GetFullPath(inboxRoot);
+        var fullInboxRoot = Path.GetFullPath(inboxStorageRoot);
         try
         {
             Directory.CreateDirectory(fullInboxRoot);

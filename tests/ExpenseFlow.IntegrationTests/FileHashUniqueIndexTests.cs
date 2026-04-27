@@ -7,7 +7,7 @@ using Xunit;
 namespace ExpenseFlow.IntegrationTests;
 
 /// <summary>
-/// Verifica índice único en <see cref="Document.FileHash"/> y que el segundo insert falle con
+/// Verifica índice único (FamilyId + FileHash) y que el segundo insert falle con
 /// <see cref="DbUpdateException"/> (comportamiento esperado cuando el Worker capta duplicados).
 /// </summary>
 public sealed class FileHashUniqueIndexTests
@@ -25,12 +25,14 @@ public sealed class FileHashUniqueIndexTests
         {
             await using (var db = new ExpenseFlowDbContext(options))
             {
-                await db.Database.EnsureCreatedAsync();
+                await db.Database.MigrateAsync();
                 var createdAt = DateTimeOffset.UtcNow;
                 var h = "ab" + new string('0', 62);
+                const int familyId = 1;
                 db.Documents.Add(
                     new Document
                     {
+                        FamilyId = familyId,
                         FilePath = "/a.png",
                         FileHash = h,
                         OcrStatus = "Failed",
@@ -41,6 +43,7 @@ public sealed class FileHashUniqueIndexTests
                 db.Documents.Add(
                     new Document
                     {
+                        FamilyId = familyId,
                         FilePath = "/b.png",
                         FileHash = h,
                         OcrStatus = "Failed",

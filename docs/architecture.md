@@ -19,8 +19,8 @@ Estructura esperada:
 ### Worker
 Flujo **end-to-end** del MVP (un ?tem por archivo pendiente en cada ciclo):
 
-1. **Scan:** `IFileScanner.GetPendingFilesToProcessAsync` (inbox, extensiones v?lidas, hash SHA-256,
-   exclusi?n por `Document.FileHash` ya persistido).
+1. **Scan:** `IFileScanner.GetPendingFilesToProcessAsync` por **familia** (inbox y ra?ces processed/error
+   resueltas; deduplicaci?n por `(FamilyId, FileHash)` con ?xito OCR; ver TASK-020).
 2. **OCR:** `IReceiptOcrProvider.AnalyzeReceiptAsync` ? `OcrResult`.
 3. **Normalize:** `IReceiptNormalizer.Normalize` ? `Document` + `DocumentLines` (mapeo en memoria).
 4. **Persist:** `SaveChanges` sobre `Document`, l?neas y un `ProcessingJob` con estado
@@ -150,9 +150,10 @@ emplazadas en `Infrastructure/Migrations` (`ExpenseFlowDbContext`).
   `StorageOptions`). Orquestaci?n: `ExpenseFlowWorker` (TASK-007).
 
 Tablas:
-- `Documents` (TASK-014: ?ndice ?nico `IX_Documents_FileHash` sobre `FileHash` para evitar
-  duplicados concurrentes; el Worker trata violaci?n de unicidad como duplicado l?gico y mueve el
-  fichero a `processed/` con `LogWarning` incluyendo `FullPath` y `FileHash` completo)
+- `Families` (TASK-020: nombre y rutas `InboxPath`, `ProcessedPath`, `ErrorPath` relativas al
+  `ContentRoot` del Worker o absolutas)
+- `Documents` (?ndice ?nico `IX_Documents_FamilyId_FileHash` sobre `FamilyId` + `FileHash`; el Worker
+  trata violaci?n como duplicado l?gico en la misma familia)
 - `DocumentLines`
 - `ProcessingJobs`
 
@@ -167,14 +168,14 @@ Host `ExpenseFlow.Api` (ASP.NET Core, minimal API) con:
   `DocumentsListResponseDto` (`items`, `page`, `pageSize`, `totalCount`). `Category` refleja el
   campo persistido en `Document` (TASK-012; p. ej. `otros`, `supermercado`).
 - **Endpoints** (`MapDocumentsEndpoints`): `GET /documents` (paginaci?n `page` / `pageSize` m?x. 100,
-  filtros opcionales `from` / `to` en `DateOnly`, `status` = `OcrStatus`); orden del listado por
+  `familyId` opcional por defecto 1, filtros opcionales `from` / `to` en `DateOnly`, `status` = `OcrStatus`); orden del listado por
   `Id` descendente (SQLite/EF no ordenan por `DateTimeOffset` en servidor; el orden se alinea con
   inserciones recientes). `GET /documents/{id}` con l?neas y `RawJson`; 404 con cuerpo JSON
-  `error` + `id` si no existe. `POST /documents/{id}/reprocess` (TASK-011): 200 al poner el
+  `error` + `id` si no existe. `POST /documents/{id}/reprocess` (TASK-011, ampliado TASK-020): 200 al poner el
   documento en `OcrStatus` = `Pending` y limpiar `ErrorMessage` (no aplica si `OcrStatus` = `Success`
-  ? 422; 404 si el id no existe); `IFileRestorer` busca bajo `Storage:Error` un archivo cuyo hash
-  SHA-256 coincida con `Document.FileHash` y lo mueve a `Inbox` con el mismo patr?n de nombres
-  colisionables que `IFileMover`. Si no hay archivo, se registra advertencia y 200 igual. Registro
+  ? 422; 404 si el id no existe); `IFileRestorer` busca bajo la ra?z `ErrorPath` de la **Family** del documento
+  (v?a `familyId`) y restaura al `InboxPath` de esa familia; `Storage:Error`/`Inbox` quedan para
+  sobrecargas sin ruta expl?cita. Si no hay archivo, se registra advertencia y 200 igual. Registro
   DI: `AddFileStorage` (incluye `IFileRestorer`). El Worker, al completar OCR con ?xito y un
   documento `Pending` con el mismo `FileHash`, actualiza ese registro (l?neas reemplazadas) en
   lugar de insertar un documento duplicado. `GET /documents/export` (TASK-013): devuelve CSV

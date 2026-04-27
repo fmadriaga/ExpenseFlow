@@ -5,9 +5,13 @@ namespace ExpenseFlow.Application.Abstractions;
 public interface IFileScanner
 {
     /// <summary>
-    /// Recorre el inbox, ignora no válidos y devuelve solo archivos aún no registrados
-    /// en base (candidatos a procesar con <see cref="ScanResult.IsAlreadyInDatabase"/> falso).
+    /// Recorre el inbox indicado, ignora no válidos y devuelve candidatos cuyo hash aún no está
+    /// en éxito para la misma <paramref name="familyId"/>.
     /// </summary>
     Task<IReadOnlyList<ScanResult>> GetPendingFilesToProcessAsync(
+        int familyId,
+        string inboxAbsolutePath,
+        string processedStorageRoot,
+        string errorStorageRoot,
         CancellationToken cancellationToken = default);
 }

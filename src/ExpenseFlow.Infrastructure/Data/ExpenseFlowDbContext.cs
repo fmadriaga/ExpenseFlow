@@ -10,6 +10,8 @@ public class ExpenseFlowDbContext : DbContext
     {
     }
 
+    public DbSet<Family> Families => Set<Family>();
+
     public DbSet<Document> Documents => Set<Document>();
 
     public DbSet<DocumentLine> DocumentLines => Set<DocumentLine>();
@@ -18,6 +20,16 @@ public class ExpenseFlowDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<Family>(b =>
+        {
+            b.ToTable("Families");
+            b.HasKey(f => f.Id);
+            b.Property(f => f.Name).IsRequired();
+            b.Property(f => f.InboxPath).IsRequired();
+            b.Property(f => f.ProcessedPath).IsRequired();
+            b.Property(f => f.ErrorPath).IsRequired();
+        });
+
         modelBuilder.Entity<Document>(b =>
         {
             b.ToTable("Documents");
@@ -28,7 +40,11 @@ public class ExpenseFlowDbContext : DbContext
             b.Property(d => d.TotalAmount).HasPrecision(18, 2);
             b.Property(d => d.TaxAmount).HasPrecision(18, 2);
             b.Property(d => d.Confidence).HasPrecision(5, 2);
-            b.HasIndex(d => d.FileHash).IsUnique();
+            b.HasIndex(d => new { d.FamilyId, d.FileHash }).IsUnique();
+            b.HasOne(d => d.Family)
+                .WithMany(f => f.Documents)
+                .HasForeignKey(d => d.FamilyId)
+                .OnDelete(DeleteBehavior.Restrict);
             b.HasMany(d => d.DocumentLines)
                 .WithOne(l => l.Document)
                 .HasForeignKey(l => l.DocumentId)

@@ -1,6 +1,7 @@
 @page "/documents"
 @rendermode InteractiveServer
 @inject IHttpClientFactory HttpFactory
+@inject IConfiguration Configuration
 
 <PageTitle>Documentos</PageTitle>
 
@@ -74,8 +75,13 @@ else
     private string _status = "";
     private string _category = "";
     private int _page = 1;
+    private int _familyId = 1;
 
-    protected override Task OnInitializedAsync() => LoadAsync();
+    protected override Task OnInitializedAsync()
+    {
+        _familyId = Configuration.GetValue("ExpenseFlowApi:FamilyId", 1);
+        return LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -83,7 +89,7 @@ else
         try
         {
             var client = HttpFactory.CreateClient("ExpenseFlowApi");
-            var qs = new List<string> { $"page={_page}", "pageSize=20" };
+            var qs = new List<string> { $"page={_page}", "pageSize=20", $"familyId={_familyId}" };
             if (DateOnly.TryParse(_fromStr, out var from))
             {
                 qs.Add($"from={from:yyyy-MM-dd}");

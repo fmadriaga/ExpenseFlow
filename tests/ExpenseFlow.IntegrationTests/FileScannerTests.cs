@@ -1,5 +1,4 @@
 using ExpenseFlow.Application.Abstractions;
-using ExpenseFlow.Application.Options;
 using ExpenseFlow.Application.Ocr;
 using ExpenseFlow.Domain.Entities;
 using ExpenseFlow.Infrastructure.Data;
@@ -7,8 +6,7 @@ using ExpenseFlow.Infrastructure.Scanning;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
-using System.IO;
+using Microsoft.Extensions.Logging;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -38,7 +36,9 @@ public class FileScannerTests
             await PrepareDatabaseAsync(sp);
             using var scope = sp.CreateScope();
             var scanner = scope.ServiceProvider.GetRequiredService<IFileScanner>();
-            var r = await scanner.GetPendingFilesToProcessAsync();
+            var proc = Path.GetFullPath(Path.Combine(inbox, "..", "p"));
+            var err = Path.GetFullPath(Path.Combine(inbox, "..", "e"));
+            var r = await scanner.GetPendingFilesToProcessAsync(1, inbox, proc, err);
             Assert.Equal(2, r.Count);
             Assert.DoesNotContain(
                 r.Select(s => s.FullPath),
@@ -75,7 +75,9 @@ public class FileScannerTests
             await PrepareDatabaseAsync(sp);
             using var scope = sp.CreateScope();
             var scanner = scope.ServiceProvider.GetRequiredService<IFileScanner>();
-            var r = await scanner.GetPendingFilesToProcessAsync();
+            var proc = Path.GetFullPath(Path.Combine(inbox, "..", "p"));
+            var err = Path.GetFullPath(Path.Combine(inbox, "..", "e"));
+            var r = await scanner.GetPendingFilesToProcessAsync(1, inbox, proc, err);
             Assert.Single(r);
             Assert.Equal(png, r[0].FullPath, StringComparer.OrdinalIgnoreCase);
         }
@@ -108,6 +110,7 @@ public class FileScannerTests
                 db.Documents.Add(
                     new Document
                     {
+                        FamilyId = 1,
                         FilePath = "earlier",
                         FileHash = hash,
                         OcrStatus = ReceiptOcrStatuses.Success,
@@ -118,7 +121,9 @@ public class FileScannerTests
 
             using var scope = sp.CreateScope();
             var scanner = scope.ServiceProvider.GetRequiredService<IFileScanner>();
-            var r = await scanner.GetPendingFilesToProcessAsync();
+            var proc = Path.GetFullPath(Path.Combine(inbox, "..", "p"));
+            var err = Path.GetFullPath(Path.Combine(inbox, "..", "e"));
+            var r = await scanner.GetPendingFilesToProcessAsync(1, inbox, proc, err);
             Assert.Empty(r);
         }
         finally
@@ -147,15 +152,6 @@ public class FileScannerTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddDbContext<ExpenseFlowDbContext>(o => o.UseSqlite(connectionString));
-        services.AddSingleton<IOptions<StorageOptions>>(
-            Options.Create(
-                new StorageOptions
-                {
-                    Inbox = absoluteInbox,
-                    Processed = Path.Combine(absoluteInbox, "..", "p"),
-                    Error = Path.Combine(absoluteInbox, "..", "e"),
-                }));
-        services.AddScoped<FileScanner>();
         services.AddScoped<IFileScanner, FileScanner>();
         return services.BuildServiceProvider(
             new ServiceProviderOptions

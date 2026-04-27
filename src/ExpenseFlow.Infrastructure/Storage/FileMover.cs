@@ -20,25 +20,39 @@ public sealed class FileMover : IFileMover
     }
 
     /// <inheritdoc />
-    public Task<string> MoveToProcessedAsync(string sourcePath, CancellationToken cancellationToken = default)
+    public Task<string> MoveToProcessedAsync(string sourcePath, CancellationToken cancellationToken = default) =>
+        MoveToProcessedAsync(sourcePath, _options.Value.Processed, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string> MoveToProcessedAsync(
+        string sourcePath,
+        string processedStorageRoot,
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult(
             MoveCore(
                 sourcePath,
-                _options.Value.Processed,
+                processedStorageRoot,
                 ProcessedBucket,
                 cancellationToken));
     }
 
     /// <inheritdoc />
-    public Task<string> MoveToErrorAsync(string sourcePath, CancellationToken cancellationToken = default)
+    public Task<string> MoveToErrorAsync(string sourcePath, CancellationToken cancellationToken = default) =>
+        MoveToErrorAsync(sourcePath, _options.Value.Error, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string> MoveToErrorAsync(
+        string sourcePath,
+        string errorStorageRoot,
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult(
             MoveCore(
                 sourcePath,
-                _options.Value.Error,
+                errorStorageRoot,
                 ErrorBucket,
                 cancellationToken));
     }

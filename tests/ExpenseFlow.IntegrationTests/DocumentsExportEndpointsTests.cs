@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Net;
 using System.Text;
 using ExpenseFlow.Domain.Entities;
@@ -86,14 +87,21 @@ public sealed class DocumentsExportEndpointsTests : IClassFixture<DocumentsExpor
         await using (var db = new ExpenseFlowDbContext(options))
         {
             await db.Database.EnsureDeletedAsync();
-            if (!await db.Database.EnsureCreatedAsync())
-            {
-                throw new InvalidOperationException("EnsureCreated did not create the database schema.");
-            }
+            await db.Database.MigrateAsync();
+
+            var inbox = Path.Combine(_factory.TempRoot, "inbox");
+            var processed = Path.Combine(_factory.TempRoot, "processed");
+            var error = Path.Combine(_factory.TempRoot, "error");
+            var fam = await db.Families.FirstAsync(f => f.Id == 1);
+            fam.InboxPath = inbox;
+            fam.ProcessedPath = processed;
+            fam.ErrorPath = error;
+            await db.SaveChangesAsync();
 
             var createdAt = new DateTimeOffset(2026, 4, 1, 12, 0, 0, TimeSpan.Zero);
             var document = new Document
             {
+                FamilyId = 1,
                 FilePath = "/inbox/ticket.png",
                 FileHash = "e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3",
                 RawJson = """{"test":true}""",

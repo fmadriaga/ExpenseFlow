@@ -88,6 +88,10 @@ public class ExpenseFlowWorkerTests
     private sealed class EmptyFileScannerStub : IFileScanner
     {
         public Task<IReadOnlyList<ScanResult>> GetPendingFilesToProcessAsync(
+            int familyId,
+            string inboxAbsolutePath,
+            string processedStorageRoot,
+            string errorStorageRoot,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<ScanResult>>(Array.Empty<ScanResult>());
     }

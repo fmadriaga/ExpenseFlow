@@ -84,7 +84,8 @@ public class DocumentsReprocessEndpointsTests : IClassFixture<ReprocessApiTestFa
         await using (var db = new ExpenseFlowDbContext(_options))
         {
             await db.Database.EnsureDeletedAsync();
-            await db.Database.EnsureCreatedAsync();
+            await db.Database.MigrateAsync();
+            await SyncFamilyPathsToTempStorageAsync(db);
         }
 
         SqliteConnection.ClearAllPools();
@@ -125,8 +126,21 @@ public class DocumentsReprocessEndpointsTests : IClassFixture<ReprocessApiTestFa
     {
         await using var db = new ExpenseFlowDbContext(_options);
         await db.Database.EnsureDeletedAsync();
-        await db.Database.EnsureCreatedAsync();
+        await db.Database.MigrateAsync();
+        await SyncFamilyPathsToTempStorageAsync(db);
         SqliteConnection.ClearAllPools();
+    }
+
+    private async Task SyncFamilyPathsToTempStorageAsync(ExpenseFlowDbContext db)
+    {
+        var inbox = Path.Combine(_factory.TempRoot, "inbox");
+        var processed = Path.Combine(_factory.TempRoot, "processed");
+        var error = Path.Combine(_factory.TempRoot, "error");
+        var fam = await db.Families.FirstAsync(f => f.Id == 1);
+        fam.InboxPath = inbox;
+        fam.ProcessedPath = processed;
+        fam.ErrorPath = error;
+        await db.SaveChangesAsync();
     }
 
     private static string Sha256Hex(byte[] data) =>
@@ -150,6 +164,7 @@ public class DocumentsReprocessEndpointsTests : IClassFixture<ReprocessApiTestFa
         {
             var doc = new Document
             {
+                FamilyId = 1,
                 FilePath = "/inbox/x.png",
                 FileHash = "ab" + new string('0', 62),
                 OcrStatus = ReceiptOcrStatuses.Success,
@@ -176,6 +191,7 @@ public class DocumentsReprocessEndpointsTests : IClassFixture<ReprocessApiTestFa
         {
             var doc = new Document
             {
+                FamilyId = 1,
                 FilePath = "/inbox/original.png",
                 FileHash = hash,
                 OcrStatus = ReceiptOcrStatuses.Failed,

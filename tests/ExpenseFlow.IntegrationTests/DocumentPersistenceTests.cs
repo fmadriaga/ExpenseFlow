@@ -36,6 +36,7 @@ public class DocumentPersistenceTests
             {
                 var document = new Document
                 {
+                    FamilyId = 1,
                     FilePath = path,
                     FileHash = hash,
                     RawJson = """{"k":"v"}""",

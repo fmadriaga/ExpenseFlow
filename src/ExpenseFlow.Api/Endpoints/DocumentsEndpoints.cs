@@ -4,6 +4,7 @@ using ExpenseFlow.Application.Abstractions;
 using ExpenseFlow.Application.Export;
 using ExpenseFlow.Application.Ocr;
 using ExpenseFlow.Domain.Entities;
+using ExpenseFlow.Infrastructure.Configuration;
 using ExpenseFlow.Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -26,11 +27,17 @@ public static class DocumentsEndpoints
                 CancellationToken cancellationToken,
                 int page = 1,
                 int pageSize = DefaultPageSize,
+                int familyId = 1,
                 DateOnly? from = null,
                 DateOnly? to = null,
                 string? status = null,
                 string? category = null) =>
             {
+                if (!await FamilyExistsAsync(db, familyId, cancellationToken).ConfigureAwait(false))
+                {
+                    return Results.NotFound(new { error = "Familia no encontrada", familyId });
+                }
+
                 if (page < 1)
                 {
                     return Results.BadRequest("page must be >= 1");
@@ -46,7 +53,7 @@ public static class DocumentsEndpoints
                     pageSize = MaxPageSize;
                 }
 
-                var query = ApplyDocumentFilters(db.Documents.AsNoTracking(), from, to, status);
+                var query = ApplyDocumentFilters(db.Documents.AsNoTracking(), familyId, from, to, status);
                 if (!string.IsNullOrWhiteSpace(category))
                 {
                     var cat = category.Trim();
@@ -85,12 +92,19 @@ public static class DocumentsEndpoints
 
         group.MapGet(
             "/{id:int}",
-            async Task<IResult> (int id, ExpenseFlowDbContext db, CancellationToken cancellationToken) =>
+            async Task<IResult> (int id, ExpenseFlowDbContext db, int familyId = 1, CancellationToken cancellationToken = default) =>
             {
+                if (!await FamilyExistsAsync(db, familyId, cancellationToken).ConfigureAwait(false))
+                {
+                    return Results.NotFound(new { error = "Familia no encontrada", familyId });
+                }
+
                 var document = await db.Documents
                     .AsNoTracking()
                     .Include(d => d.DocumentLines)
-                    .FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+                    .FirstOrDefaultAsync(
+                        d => d.Id == id && d.FamilyId == familyId,
+                        cancellationToken);
                 if (document is null)
                 {
                     return Results.NotFound(new
@@ -136,10 +150,16 @@ public static class DocumentsEndpoints
                 int id,
                 PatchDocumentRequestDto body,
                 ExpenseFlowDbContext db,
-                CancellationToken cancellationToken) =>
+                int familyId = 1,
+                CancellationToken cancellationToken = default) =>
             {
+                if (!await FamilyExistsAsync(db, familyId, cancellationToken).ConfigureAwait(false))
+                {
+                    return Results.NotFound(new { error = "Familia no encontrada", familyId });
+                }
+
                 var document = await db.Documents
-                    .FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+                    .FirstOrDefaultAsync(d => d.Id == id && d.FamilyId == familyId, cancellationToken);
                 if (document is null)
                 {
                     return Results.NotFound(new
@@ -179,17 +199,27 @@ public static class DocumentsEndpoints
                 HttpContext http,
                 ExpenseFlowDbContext db,
                 ICsvExporter exporter,
+                int familyId = 1,
                 DateOnly? from = null,
                 DateOnly? to = null,
                 string? status = null,
                 string? delimiter = null,
                 CancellationToken cancellationToken = default) =>
             {
+                if (!await FamilyExistsAsync(db, familyId, cancellationToken).ConfigureAwait(false))
+                {
+                    http.Response.StatusCode = StatusCodes.Status404NotFound;
+                    await http.Response.WriteAsJsonAsync(
+                        new { error = "Familia no encontrada", familyId },
+                        cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
                 var sep = ResolveExportDelimiter(delimiter);
                 http.Response.ContentType = "text/csv; charset=utf-8";
                 http.Response.Headers.ContentDisposition = @"attachment; filename=""documents.csv""";
 
-                var query = ApplyDocumentFilters(db.Documents.AsNoTracking(), from, to, status)
+                var query = ApplyDocumentFilters(db.Documents.AsNoTracking(), familyId, from, to, status)
                     .OrderByDescending(d => d.Id)
                     .Select(d => new DocumentExportRow(
                         d.Id,
@@ -219,11 +249,20 @@ public static class DocumentsEndpoints
                 int id,
                 ExpenseFlowDbContext db,
                 IFileRestorer restorer,
+                IWebHostEnvironment hostEnvironment,
                 ILoggerFactory loggerFactory,
-                CancellationToken cancellationToken) =>
+                int familyId = 1,
+                CancellationToken cancellationToken = default) =>
             {
+                if (!await FamilyExistsAsync(db, familyId, cancellationToken).ConfigureAwait(false))
+                {
+                    return Results.NotFound(new { error = "Familia no encontrada", familyId });
+                }
+
                 var logger = loggerFactory.CreateLogger("DocumentsEndpoints");
-                var document = await db.Documents.FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+                var document = await db.Documents
+                    .Include(d => d.Family)
+                    .FirstOrDefaultAsync(d => d.Id == id && d.FamilyId == familyId, cancellationToken);
                 if (document is null)
                 {
                     return Results.NotFound(new
@@ -252,12 +291,20 @@ public static class DocumentsEndpoints
                 }
                 else
                 {
+                    var errorRoot = ContentRootPathResolver.Resolve(
+                        hostEnvironment.ContentRootPath,
+                        document.Family.ErrorPath);
+                    var inboxRoot = ContentRootPathResolver.Resolve(
+                        hostEnvironment.ContentRootPath,
+                        document.Family.InboxPath);
                     var sourcePath = await restorer
-                        .FindSourcePathInErrorTreeAsync(document.FileHash, cancellationToken)
+                        .FindSourcePathInErrorTreeAsync(document.FileHash, errorRoot, cancellationToken)
                         .ConfigureAwait(false);
                     if (!string.IsNullOrEmpty(sourcePath))
                     {
-                        await restorer.RestoreToInboxAsync(sourcePath, cancellationToken).ConfigureAwait(false);
+                        await restorer
+                            .RestoreToInboxAsync(sourcePath, inboxRoot, cancellationToken)
+                            .ConfigureAwait(false);
                     }
                     else
                     {
@@ -273,12 +320,20 @@ public static class DocumentsEndpoints
         return app;
     }
 
+    private static Task<bool> FamilyExistsAsync(
+        ExpenseFlowDbContext db,
+        int familyId,
+        CancellationToken cancellationToken) =>
+        db.Families.AsNoTracking().AnyAsync(f => f.Id == familyId, cancellationToken);
+
     private static IQueryable<Document> ApplyDocumentFilters(
         IQueryable<Document> query,
+        int familyId,
         DateOnly? from,
         DateOnly? to,
         string? status)
     {
+        query = query.Where(d => d.FamilyId == familyId);
         if (from.HasValue)
         {
             query = query.Where(d =>

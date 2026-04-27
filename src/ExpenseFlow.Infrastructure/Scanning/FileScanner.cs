@@ -1,11 +1,9 @@
 using ExpenseFlow.Application.Abstractions;
 using ExpenseFlow.Application.FileScanning;
-using ExpenseFlow.Application.Options;
 using ExpenseFlow.Application.Ocr;
 using ExpenseFlow.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using System.Security.Cryptography;
 
 namespace ExpenseFlow.Infrastructure.Scanning;
@@ -19,61 +17,80 @@ public sealed class FileScanner : IFileScanner
     };
 
     private readonly ExpenseFlowDbContext _db;
-    private readonly IOptions<StorageOptions> _options;
     private readonly ILogger<FileScanner> _logger;
 
     public FileScanner(
         ExpenseFlowDbContext db,
-        IOptions<StorageOptions> options,
         ILogger<FileScanner> logger)
     {
         _db = db;
-        _options = options;
         _logger = logger;
     }
 
     public async Task<IReadOnlyList<ScanResult>> GetPendingFilesToProcessAsync(
+        int familyId,
+        string inboxAbsolutePath,
+        string processedStorageRoot,
+        string errorStorageRoot,
         CancellationToken cancellationToken = default)
     {
-        var inboxPath = _options.Value.Inbox;
-        if (!Directory.Exists(inboxPath))
+        if (string.IsNullOrWhiteSpace(inboxAbsolutePath))
         {
-            _logger.LogWarning("Inbox directory does not exist, skipping scan: {InboxPath}", inboxPath);
+            throw new ArgumentException("Inbox path is required.", nameof(inboxAbsolutePath));
+        }
+
+        if (!Directory.Exists(inboxAbsolutePath))
+        {
+            _logger.LogWarning("Inbox directory does not exist, skipping scan: {InboxPath}", inboxAbsolutePath);
             return Array.Empty<ScanResult>();
         }
 
-        _logger.LogInformation("Scanning inbox: {InboxPath}", inboxPath);
+        _logger.LogInformation(
+            "Scanning inbox: {InboxPath} (FamilyId: {FamilyId})",
+            inboxAbsolutePath,
+            familyId);
         var pending = new List<ScanResult>();
         var entries = 0;
         string[] files;
         try
         {
-            files = Directory.GetFiles(inboxPath, "*", InboxSearchDepth);
+            files = Directory.GetFiles(inboxAbsolutePath, "*", InboxSearchDepth);
         }
         catch (Exception ex)
         {
             _logger.LogError(
                 ex,
                 "Failed to list files in inbox: {InboxPath}",
-                inboxPath);
+                inboxAbsolutePath);
             return Array.Empty<ScanResult>();
         }
 
         foreach (var filePath in files)
         {
-            await ProcessOneFileAsync(filePath, pending, cancellationToken).ConfigureAwait(false);
+            await ProcessOneFileAsync(
+                    filePath,
+                    familyId,
+                    processedStorageRoot,
+                    errorStorageRoot,
+                    pending,
+                    cancellationToken)
+                .ConfigureAwait(false);
             entries++;
         }
 
         _logger.LogInformation(
-            "Inbox scan finished. Entries: {FileCount}, pending new: {PendingCount}.",
+            "Inbox scan finished. Entries: {FileCount}, pending new: {PendingCount}. FamilyId: {FamilyId}",
             entries,
-            pending.Count);
+            pending.Count,
+            familyId);
         return pending;
     }
 
     private async Task ProcessOneFileAsync(
         string filePath,
+        int familyId,
+        string processedStorageRoot,
+        string errorStorageRoot,
         List<ScanResult> pending,
         CancellationToken cancellationToken)
     {
@@ -138,12 +155,13 @@ public sealed class FileScanner : IFileScanner
         }
 
         _logger.LogDebug("Computed hash for {FilePath}", filePath);
-        // Solo se excluye duplicado si ya hay un documento con el mismo hash y OCR concluido con éxito;
-        // Pending/Failed/Partial permiten volver a cola (reproceso manual, TASK-011).
         var successAlready = await _db.Documents
             .AsNoTracking()
             .AnyAsync(
-                d => d.FileHash == fileHash && d.OcrStatus == ReceiptOcrStatuses.Success,
+                d =>
+                    d.FamilyId == familyId &&
+                    d.FileHash == fileHash &&
+                    d.OcrStatus == ReceiptOcrStatuses.Success,
                 cancellationToken)
             .ConfigureAwait(false);
         if (successAlready)
@@ -163,10 +181,14 @@ public sealed class FileScanner : IFileScanner
             fileHash.Length >= 12
                 ? fileHash[..12]
                 : fileHash);
-        pending.Add(new ScanResult(
-            filePath,
-            fileHash,
-            IsAlreadyInDatabase: false));
+        pending.Add(
+            new ScanResult(
+                filePath,
+                fileHash,
+                IsAlreadyInDatabase: false,
+                familyId,
+                processedStorageRoot,
+                errorStorageRoot));
     }
 
     private static bool IsAllowedExtension(string filePath)
