@@ -1,6 +1,7 @@
 using ExpenseFlow.Application.Abstractions;
 using ExpenseFlow.Application.FileScanning;
 using ExpenseFlow.Application.Options;
+using ExpenseFlow.Application.Ocr;
 using ExpenseFlow.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -137,16 +138,18 @@ public sealed class FileScanner : IFileScanner
         }
 
         _logger.LogDebug("Computed hash for {FilePath}", filePath);
-        var exists = await _db.Documents
+        // Solo se excluye duplicado si ya hay un documento con el mismo hash y OCR concluido con éxito;
+        // Pending/Failed/Partial permiten volver a cola (reproceso manual, TASK-011).
+        var successAlready = await _db.Documents
             .AsNoTracking()
             .AnyAsync(
-                d => d.FileHash == fileHash,
+                d => d.FileHash == fileHash && d.OcrStatus == ReceiptOcrStatuses.Success,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (exists)
+        if (successAlready)
         {
             _logger.LogWarning(
-                "Duplicate file by hash, skipping. FullPath: {FullPath}, FileHash: {FileHashPrefix}…",
+                "Duplicate file by hash (Success in DB), skipping. FullPath: {FullPath}, FileHash: {FileHashPrefix}…",
                 filePath,
                 fileHash.Length >= 12
                     ? fileHash[..12]

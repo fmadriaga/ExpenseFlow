@@ -147,7 +147,14 @@ Host `ExpenseFlow.Api` (ASP.NET Core, minimal API) con:
   filtros opcionales `from` / `to` en `DateOnly`, `status` = `OcrStatus`); orden del listado por
   `Id` descendente (SQLite/EF no ordenan por `DateTimeOffset` en servidor; el orden se alinea con
   inserciones recientes). `GET /documents/{id}` con l?neas y `RawJson`; 404 con cuerpo JSON
-  `error` + `id` si no existe.
+  `error` + `id` si no existe. `POST /documents/{id}/reprocess` (TASK-011): 200 al poner el
+  documento en `OcrStatus` = `Pending` y limpiar `ErrorMessage` (no aplica si `OcrStatus` = `Success`
+  ? 422; 404 si el id no existe); `IFileRestorer` busca bajo `Storage:Error` un archivo cuyo hash
+  SHA-256 coincida con `Document.FileHash` y lo mueve a `Inbox` con el mismo patr?n de nombres
+  colisionables que `IFileMover`. Si no hay archivo, se registra advertencia y 200 igual. Registro
+  DI: `AddFileStorage` (incluye `IFileRestorer`). El Worker, al completar OCR con ?xito y un
+  documento `Pending` con el mismo `FileHash`, actualiza ese registro (l?neas reemplazadas) en
+  lugar de insertar un documento duplicado.
 
 ## Capas
 

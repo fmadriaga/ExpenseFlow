@@ -172,6 +172,7 @@ El proyecto `ExpenseFlow.Api` usa la misma cadena SQLite y la sección `Storage`
 
 - `GET /documents` — listado paginado (`page`, `pageSize`, opcionalmente `from`, `to`, `status`).
 - `GET /documents/{id}` — detalle con líneas y `RawJson` (el listado no incluye `RawJson`).
+- `POST /documents/{id}/reprocess` — marca el documento para reproceso (`OcrStatus` = `Pending`) y, si el fichero está bajo `error/`, lo vuelve a colocar en `inbox/` (mismo hash en base de datos). `422` si el documento ya está en `Success`.
 
 **Ejecutar en local:**
 
@@ -185,6 +186,7 @@ Con el perfil `http` de `launchSettings.json` la URL base suele ser `http://loca
 ```bash
 curl -s http://localhost:5287/documents
 curl -s http://localhost:5287/documents/1
+curl -s -X POST http://localhost:5287/documents/1/reprocess
 ```
 
 Si la base está vacía, el listado devuelve `items` vacío y `totalCount` 0. Tras procesar tickets con el Worker, los mismos documentos son visibles por la API.

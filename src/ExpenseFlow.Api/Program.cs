@@ -10,6 +10,7 @@ ExpenseFlowConnectionStringValidator.EnsureConfigured(builder.Configuration);
 
 builder.Services.AddPersistence(builder.Configuration, builder.Environment);
 builder.Services.AddFileScanning(builder.Configuration);
+builder.Services.AddFileStorage();
 
 var app = builder.Build();
 

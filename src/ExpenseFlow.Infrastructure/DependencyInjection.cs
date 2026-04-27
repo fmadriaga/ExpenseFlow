@@ -62,6 +62,7 @@ public static class DependencyInjection
     public static IServiceCollection AddFileStorage(this IServiceCollection services)
     {
         services.AddScoped<IFileMover, FileMover>();
+        services.AddScoped<IFileRestorer, FileRestorer>();
         return services;
     }
 

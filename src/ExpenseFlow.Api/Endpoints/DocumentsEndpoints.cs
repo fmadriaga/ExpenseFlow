@@ -1,6 +1,9 @@
 using ExpenseFlow.Application.DTOs;
+using ExpenseFlow.Application.Abstractions;
+using ExpenseFlow.Application.Ocr;
 using ExpenseFlow.Domain.Entities;
 using ExpenseFlow.Infrastructure.Data;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace ExpenseFlow.Api.Endpoints;
@@ -135,6 +138,63 @@ public static class DocumentsEndpoints
                 };
 
                 return Results.Ok(dto);
+            });
+
+        group.MapPost(
+            "/{id:int}/reprocess",
+            async Task<IResult> (
+                int id,
+                ExpenseFlowDbContext db,
+                IFileRestorer restorer,
+                ILoggerFactory loggerFactory,
+                CancellationToken cancellationToken) =>
+            {
+                var logger = loggerFactory.CreateLogger("DocumentsEndpoints");
+                var document = await db.Documents.FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+                if (document is null)
+                {
+                    return Results.NotFound(new
+                    {
+                        error = "Documento no encontrado",
+                        id,
+                    });
+                }
+
+                if (string.Equals(document.OcrStatus, ReceiptOcrStatuses.Success, StringComparison.Ordinal))
+                {
+                    return Results.Json(
+                        new { error = "El documento ya se procesó correctamente; no requiere reproceso.", id },
+                        statusCode: StatusCodes.Status422UnprocessableEntity);
+                }
+
+                document.OcrStatus = ReceiptOcrStatuses.Pending;
+                document.ErrorMessage = null;
+                await db.SaveChangesAsync(cancellationToken);
+
+                if (string.IsNullOrWhiteSpace(document.FileHash))
+                {
+                    logger.LogWarning(
+                        "Reprocess id={DocumentId}: Pending sin FileHash; no se puede buscar en error.",
+                        id);
+                }
+                else
+                {
+                    var sourcePath = await restorer
+                        .FindSourcePathInErrorTreeAsync(document.FileHash, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (!string.IsNullOrEmpty(sourcePath))
+                    {
+                        await restorer.RestoreToInboxAsync(sourcePath, cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        logger.LogWarning(
+                            "Reprocess id={DocumentId}: actualizado a Pending; fichero no encontrado en carpeta error.",
+                            id);
+                    }
+                }
+
+                return Results.Ok(new { message = "Documento marcado para reproceso.", id });
             });
 
         return app;

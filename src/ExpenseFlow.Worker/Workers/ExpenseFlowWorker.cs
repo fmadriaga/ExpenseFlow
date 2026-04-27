@@ -203,19 +203,44 @@ public sealed class ExpenseFlowWorker : BackgroundService
             return false;
         }
 
-        var document = normalizer.Normalize(ocrResult, scan.FullPath, scan.FileHash);
+        var normalized = normalizer.Normalize(ocrResult, scan.FullPath, scan.FileHash);
         var finished = DateTimeOffset.UtcNow;
-        document.ProcessingJobs.Add(
-            new ProcessingJob
-            {
-                StartedAt = fileStarted,
-                FinishedAt = finished,
-                Status = ProcessingJobStatuses.Success,
-            });
 
+        Document document;
         try
         {
-            db.Documents.Add(document);
+            var pending = await db.Documents
+                .Include(d => d.DocumentLines)
+                .FirstOrDefaultAsync(
+                    d => d.FileHash == scan.FileHash && d.OcrStatus == ReceiptOcrStatuses.Pending,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            if (pending is not null)
+            {
+                ApplyNormalizedOntoPending(pending, normalized, scan.FullPath, db);
+                pending.ProcessingJobs.Add(
+                    new ProcessingJob
+                    {
+                        StartedAt = fileStarted,
+                        FinishedAt = finished,
+                        Status = ProcessingJobStatuses.Success,
+                    });
+                document = pending;
+            }
+            else
+            {
+                document = normalized;
+                document.ProcessingJobs.Add(
+                    new ProcessingJob
+                    {
+                        StartedAt = fileStarted,
+                        FinishedAt = finished,
+                        Status = ProcessingJobStatuses.Success,
+                    });
+                db.Documents.Add(document);
+            }
+
             await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -391,5 +416,42 @@ public sealed class ExpenseFlowWorker : BackgroundService
         return message.Length <= MaxErrorMessageLength
             ? message
             : message[..MaxErrorMessageLength];
+    }
+
+    /// <summary>
+    /// Actualiza un documento ya existente marcado como Pending (reproceso) con el resultado del OCR.
+    /// </summary>
+    private static void ApplyNormalizedOntoPending(
+        Document pending,
+        Document normalized,
+        string currentFilePath,
+        ExpenseFlowDbContext db)
+    {
+        pending.FilePath = currentFilePath;
+        pending.FileHash = normalized.FileHash;
+        pending.MerchantName = normalized.MerchantName;
+        pending.TransactionDate = normalized.TransactionDate;
+        pending.Currency = normalized.Currency;
+        pending.TotalAmount = normalized.TotalAmount;
+        pending.TaxAmount = normalized.TaxAmount;
+        pending.RawJson = normalized.RawJson;
+        pending.Confidence = normalized.Confidence;
+        pending.OcrStatus = normalized.OcrStatus;
+        pending.ErrorMessage = normalized.ErrorMessage;
+
+        db.DocumentLines.RemoveRange(pending.DocumentLines);
+        pending.DocumentLines.Clear();
+        foreach (var line in normalized.DocumentLines)
+        {
+            pending.DocumentLines.Add(
+                new DocumentLine
+                {
+                    Description = line.Description,
+                    Quantity = line.Quantity,
+                    UnitPrice = line.UnitPrice,
+                    Amount = line.Amount,
+                    Currency = line.Currency,
+                });
+        }
     }
 }

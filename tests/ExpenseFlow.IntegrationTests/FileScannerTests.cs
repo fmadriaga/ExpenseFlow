@@ -1,5 +1,6 @@
 using ExpenseFlow.Application.Abstractions;
 using ExpenseFlow.Application.Options;
+using ExpenseFlow.Application.Ocr;
 using ExpenseFlow.Domain.Entities;
 using ExpenseFlow.Infrastructure.Data;
 using ExpenseFlow.Infrastructure.Scanning;
@@ -109,6 +110,7 @@ public class FileScannerTests
                     {
                         FilePath = "earlier",
                         FileHash = hash,
+                        OcrStatus = ReceiptOcrStatuses.Success,
                         CreatedAt = DateTimeOffset.UtcNow,
                     });
                 await db.SaveChangesAsync();
