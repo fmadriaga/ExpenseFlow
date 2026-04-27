@@ -47,6 +47,10 @@ Flujo **end-to-end** del MVP (un ?tem por archivo pendiente en cada ciclo):
   - `Information`: inicio/fin de job con m?tricas, candidato detectado, archivo movido a processed.
   - `Warning`: duplicado por hash, archivo movido a error por fallo recuperable del pipeline.
   - `Error`: OCR/persistencia/movimiento fallidos con excepci?n y contexto de archivo.
+- **Logs persistentes y m?tricas (TASK-018):** Serilog (`Serilog` en `appsettings`: consola + archivo
+  bajo `../../logs/expenseflow-.log` por defecto, rotaci?n diaria, `retainedFileCountLimit` configurable).
+  Contadores `System.Diagnostics.Metrics` con meter `ExpenseFlow.Worker` (p. ej. `files.found`); visibles
+  con `dotnet-counters monitor -p <pid> --counters ExpenseFlow.Worker`.
 - **Cancelaci?n:** `CancellationToken` del host en `Task.Delay`, `WaitAsync`, esc?ner, EF y mover.
 
 Los pasos 1?2 (listado y filtrado en inbox, hash y dedup) siguen encapsulados en `FileScanner`; la

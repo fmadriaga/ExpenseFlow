@@ -142,6 +142,9 @@ public sealed class ExpenseFlowWorker : BackgroundService
         int processedOk,
         int processedFailed)
     {
+        WorkerCycleMetrics.FilesFound.Add(found);
+        WorkerCycleMetrics.FilesProcessedOk.Add(processedOk);
+        WorkerCycleMetrics.FilesProcessedFailed.Add(processedFailed);
         var finished = DateTimeOffset.UtcNow;
         var duration = finished - jobStarted;
         _logger.LogInformation(

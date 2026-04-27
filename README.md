@@ -182,6 +182,18 @@ falla el pipeline del archivo, acaba en `error/yyyy/MM/` (salvo errores extremos
   `System=Warning`, `Console.IncludeScopes=true`.
 - Seguridad: los logs no deben contener `ApiKey` ni connection strings.
 
+## Logs persistentes y métricas (TASK-018)
+
+- El Worker escribe además en un **fichero** (relativo al proyecto: `../../logs/expenseflow-.log` por
+  defecto), con **rotación diaria** y retención de archivos (`retainedFileCountLimit`, p. ej. 14).
+  Ajusta ruta y límite bajo `Serilog:WriteTo` en `src/ExpenseFlow.Worker/appsettings.json`.
+- Métricas de ciclo (meter `ExpenseFlow.Worker`), p. ej. `files.found`, `files.processed_ok`,
+  `files.processed_failed`:
+
+```bash
+dotnet-counters monitor -p <pid> --counters ExpenseFlow.Worker
+```
+
 ## Api de consulta (TASK-010)
 
 El proyecto `ExpenseFlow.Api` usa la misma cadena SQLite y la sección `Storage` que el Worker
