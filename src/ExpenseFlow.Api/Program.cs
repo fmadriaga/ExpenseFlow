@@ -1,4 +1,5 @@
 using ExpenseFlow.Api.Endpoints;
+using ExpenseFlow.Application.Export;
 using ExpenseFlow.Infrastructure;
 using ExpenseFlow.Infrastructure.Configuration;
 using ExpenseFlow.Infrastructure.Data;
@@ -11,6 +12,7 @@ ExpenseFlowConnectionStringValidator.EnsureConfigured(builder.Configuration);
 builder.Services.AddPersistence(builder.Configuration, builder.Environment);
 builder.Services.AddFileScanning(builder.Configuration);
 builder.Services.AddFileStorage();
+builder.Services.AddSingleton<ICsvExporter, DocumentCsvExporter>();
 
 var app = builder.Build();
 

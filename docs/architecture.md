@@ -162,7 +162,11 @@ Host `ExpenseFlow.Api` (ASP.NET Core, minimal API) con:
   colisionables que `IFileMover`. Si no hay archivo, se registra advertencia y 200 igual. Registro
   DI: `AddFileStorage` (incluye `IFileRestorer`). El Worker, al completar OCR con ?xito y un
   documento `Pending` con el mismo `FileHash`, actualiza ese registro (l?neas reemplazadas) en
-  lugar de insertar un documento duplicado.
+  lugar de insertar un documento duplicado. `GET /documents/export` (TASK-013): devuelve CSV
+  (UTF-8 con BOM) con columnas de documento; filtros opcionales `from`, `to`, `status` (misma
+  sem?ntica que el listado); `delimiter` = `comma` (defecto), `,`, `semicolon` o `;` para
+  delimitador. `Content-Type: text/csv`, `Content-Disposition: attachment`. Streaming por
+  `AsAsyncEnumerable`; escape RFC 4180 v?a `ICsvExporter` / `DocumentCsvExporter` en Application.
 
 ## Capas
 
