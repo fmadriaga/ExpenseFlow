@@ -12,9 +12,9 @@ Receipt y una base SQLite para persistir resultados.
 Carpeta local sincronizada con Google Drive Desktop o OneDrive Desktop.
 
 Estructura esperada:
-- `storage/familia/inbox`
-- `storage/familia/processed`
-- `storage/familia/error`
+- `storage/familia/inbox` (debe existir para que el escáner liste archivos)
+- `storage/familia/processed` y `storage/familia/error` (raíces configurables en `Storage`;
+  no hace falta crear manualmente `yyyy/MM`: se crean al mover con `IFileMover`, ver TASK-006)
 
 ### Worker
 Servicio en segundo plano que:
@@ -81,6 +81,15 @@ emplazadas en `Infrastructure/Migrations` (`ExpenseFlowDbContext`).
   guardado; si coincide, el archivo se descarta para reproceso y queda trazado en log.
 - **Application (TASK-003):** contrato `IFileScanner`, DTO `ScanResult`, POCO `StorageOptions`
   (sección de configuración `Storage`).
+- **Movimiento de archivos (TASK-006):** contrato `IFileMover` en `Application.Abstractions` con
+  `MoveToProcessedAsync` y `MoveToErrorAsync` (destino bajo `StorageOptions.Processed` o `Error`,
+  subcarpetas `yyyy/MM` en UTC). Implementación `FileMover` en `Infrastructure.Storage`: crea
+  el árbol de directorios destino si falta, resuelve colisiones de nombre con sufijo único
+  (`{nombre}_{guid}{ext}`) sin sobrescribir archivos existentes, logs de movimiento exitoso,
+  error al mover y colisión de nombre evitada. **No** consulta base de datos ni implementa
+  deduplicación por hash: eso sigue siendo responsabilidad exclusiva de `IFileScanner` (comparación
+  con `Document.FileHash`). Registro DI: `AddFileStorage` (tras `AddFileScanning` para tener
+  `StorageOptions`). La orquestación desde el Worker queda en TASK-007.
 
 Tablas:
 - `Documents`

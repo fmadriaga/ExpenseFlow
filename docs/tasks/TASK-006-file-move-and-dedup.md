@@ -1,8 +1,13 @@
 # TASK-006 File move and dedup
 
-status: ready
+status: done
 owner: backend
 priority: high
+
+## Cierre documental
+
+- **Entregado:** contrato `IFileMover`, implementación `FileMover`, registro `AddFileStorage`, tests de integración de movimiento/colisiones/árbol de directorios.
+- **Pendiente (TASK-007):** invocar `IFileMover` desde la orquestación del Worker tras éxito o fallo de procesamiento (criterios de aceptación end-to-end del flujo batch).
 
 ## Goal
 Mover archivos a carpetas finales y evitar reprocesos.

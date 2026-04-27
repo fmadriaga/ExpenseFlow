@@ -17,7 +17,7 @@ Procesamiento de tickets (OCR) desde una carpeta sincronizada, con persistencia 
 | `src/ExpenseFlow.Worker` | Proceso por lotes en segundo plano |
 | `src/ExpenseFlow.Api` | Host HTTP para evolución futura |
 | `docs/` | Visión, arquitectura y tasks |
-| `tests/ExpenseFlow.IntegrationTests` | Pruebas de integración (SQLite, escáner, mapper OCR) |
+| `tests/ExpenseFlow.IntegrationTests` | Pruebas de integración (SQLite, escáner, mapper OCR, FileMover) |
 | `tests/ExpenseFlow.Application.Tests` | Pruebas unitarias (p. ej. normalizador de recibos) |
 | `data/` | Datos locales: base SQLite `expenseflow.db` (generada; no commitear) |
 | `storage/familia/` (subcarpetas `inbox`, `processed`, `error`) | Inbox y salidas de archivos (según arquitectura) |
@@ -58,6 +58,15 @@ El Worker aplica `Migrate()` al arrancar para mantener el esquema al día en des
 - La carpeta de **inbox** debe existir para procesar ficheros (p. ej. creada por sincronización
   o manualmente); si no existe, el escáner registra una advertencia y no devuelve candidatos.
 
+## Movimiento a processed/error (TASK-006)
+
+- `IFileMover` / `FileMover` mueven archivos bajo las rutas raíz `Processed` y `Error` de la
+  sección `Storage`, creando automáticamente las subcarpetas `yyyy/MM` (UTC) y, si hace falta,
+  las propias raíces; **no** es necesario crear esa jerarquía a mano antes de un movimiento.
+- Colisiones de nombre en el destino se resuelven con un nombre alternativo sin sobrescribir.
+- El Worker registra el servicio en DI; la **invocación** tras procesar cada archivo corresponde
+  a TASK-007 (orquestación batch).
+
 ## OCR Azure (TASK-004)
 
 - El proveedor OCR implementa `IReceiptOcrProvider` y usa Azure Document Intelligence
@@ -83,7 +92,8 @@ El Worker aplica `Migrate()` al arrancar para mantener el esquema al día en des
 ## Ejecutar
 
 - Worker: `dotnet run --project src/ExpenseFlow.Worker` (migración, escáner al arranque,
-  luego el `BackgroundService` de demostración; sin OCR aún)
+  luego el `BackgroundService` de demostración; OCR/normalización/movimiento de archivos en
+  orquestación pendiente de tasks posteriores — ver `docs/tasks/`)
 - API: `dotnet run --project src/ExpenseFlow.Api`
 
 ## Referencia de capas

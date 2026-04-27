@@ -5,6 +5,7 @@ using ExpenseFlow.Infrastructure.Data;
 using ExpenseFlow.Infrastructure.Ocr;
 using ExpenseFlow.Infrastructure.Options;
 using ExpenseFlow.Infrastructure.Scanning;
+using ExpenseFlow.Infrastructure.Storage;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -49,6 +50,16 @@ public static class DependencyInjection
                 configuration.GetSection(StorageOptions.SectionName));
         services.AddSingleton<IPostConfigureOptions<StorageOptions>, PostConfigureStoragePaths>();
         services.AddScoped<IFileScanner, FileScanner>();
+        return services;
+    }
+
+    /// <summary>
+    /// Registra <see cref="IFileMover"/> para mover archivos a <c>processed</c> o <c>error</c>.
+    /// Requiere que <see cref="StorageOptions"/> ya esté registrado (p. ej. vía <see cref="AddFileScanning"/>).
+    /// </summary>
+    public static IServiceCollection AddFileStorage(this IServiceCollection services)
+    {
+        services.AddScoped<IFileMover, FileMover>();
         return services;
     }
 
