@@ -1,6 +1,7 @@
 using ExpenseFlow.Application.Abstractions;
 using ExpenseFlow.Application.Options;
 using ExpenseFlow.Infrastructure.Data;
+using ExpenseFlow.Infrastructure.Ocr;
 using ExpenseFlow.Infrastructure.Options;
 using ExpenseFlow.Infrastructure.Scanning;
 using Microsoft.Data.Sqlite;
@@ -47,6 +48,20 @@ public static class DependencyInjection
                 configuration.GetSection(StorageOptions.SectionName));
         services.AddSingleton<IPostConfigureOptions<StorageOptions>, PostConfigureStoragePaths>();
         services.AddScoped<IFileScanner, FileScanner>();
+        return services;
+    }
+
+    /// <summary>
+    /// Registra proveedores OCR y sus opciones tipadas.
+    /// </summary>
+    public static IServiceCollection AddOcrProviders(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services
+            .AddOptions<AzureDocumentIntelligenceOptions>()
+            .Bind(configuration.GetSection(AzureDocumentIntelligenceOptions.SectionName));
+        services.AddScoped<IReceiptOcrProvider, AzureDocumentIntelligenceReceiptProvider>();
         return services;
     }
 

@@ -1,6 +1,6 @@
 # TASK-004 Azure receipt provider
 
-status: ready
+status: done
 owner: backend
 priority: high
 
@@ -33,3 +33,14 @@ estructurada para tickets, reduciendo al mínimo el parsing manual.
 - No exponer tipos del SDK de Azure fuera de Infrastructure
 - Preservar respuesta cruda en una estructura serializable
 - Dejar espacio para agregar otros providers más adelante
+
+## Cierre documental (Docs Keeper)
+
+- Estado: `status: done` (confirmado tras aprobación de Reviewer).
+- Implementado: contrato `IReceiptOcrProvider` + DTO `OcrResult` en Application; provider
+  `AzureDocumentIntelligenceReceiptProvider` en Infrastructure; opciones tipadas
+  `AzureDocumentIntelligenceOptions`; registro DI con `AddOcrProviders`; test de mapeo
+  (`AzureReceiptResultMapperTests`) sin llamada real a Azure.
+- Pendiente para tasks futuras (fuera de alcance de TASK-004): invocación del provider dentro
+  del flujo del Worker, normalización/persistencia completa del OCR en pipeline, y soporte para
+  providers alternativos.

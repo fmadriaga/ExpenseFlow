@@ -30,6 +30,16 @@ Servicio en segundo plano que:
 Abstracción `IReceiptOcrProvider` definida en Application.
 Implementación inicial en Infrastructure:
 - `AzureDocumentIntelligenceReceiptProvider`
+- **Contrato y DTO interno (TASK-004):** `IReceiptOcrProvider` recibe ruta de archivo y devuelve
+  `OcrResult` (comercio, fecha de transacción, total, impuestos, líneas y `RawJson` serializable).
+- **Proveedor Azure (TASK-004):** usa `Azure.AI.DocumentIntelligence` con modelo
+  `prebuilt-receipt`. Endpoint y key se toman desde configuración (`AzureDocumentIntelligence`:
+  `Endpoint`, `ApiKey`) mediante opciones tipadas; no se exponen tipos del SDK fuera de
+  Infrastructure.
+- **Registro DI:** `AddOcrProviders` registra el provider en Infrastructure; el Worker lo deja
+  disponible por DI sin invocarlo aún (la orquestación queda para tasks posteriores).
+- **Extensibilidad:** Application depende solo de `IReceiptOcrProvider`; para incorporar nuevos
+  OCR providers se agrega implementación y registro en Infrastructure sin cambiar el contrato.
 
 ### Storage
 SQLite mediante EF Core. El fichero de base de datos local por defecto vive en

@@ -53,6 +53,28 @@ El Worker aplica `Migrate()` al arrancar para mantener el esquema al día en des
 - La carpeta de **inbox** debe existir para procesar ficheros (p. ej. creada por sincronización
   o manualmente); si no existe, el escáner registra una advertencia y no devuelve candidatos.
 
+## OCR Azure (TASK-004)
+
+- El proveedor OCR implementa `IReceiptOcrProvider` y usa Azure Document Intelligence
+  (`prebuilt-receipt`).
+- Configura credenciales en `src/ExpenseFlow.Worker/appsettings.json` (o, preferiblemente, en
+  User Secrets / variables de entorno):
+
+```json
+{
+  "AzureDocumentIntelligence": {
+    "Endpoint": "https://<tu-recurso>.cognitiveservices.azure.com/",
+    "ApiKey": "<tu-key>"
+  }
+}
+```
+
+- No incluyas keys reales en el repositorio. Si faltan `Endpoint` o `ApiKey`, el provider falla
+  con un error claro al resolverse desde DI.
+- Variables de entorno equivalentes:
+  - `AzureDocumentIntelligence__Endpoint`
+  - `AzureDocumentIntelligence__ApiKey`
+
 ## Ejecutar
 
 - Worker: `dotnet run --project src/ExpenseFlow.Worker` (migración, escáner al arranque,
