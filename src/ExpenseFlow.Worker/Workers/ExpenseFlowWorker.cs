@@ -257,27 +257,26 @@ public sealed class ExpenseFlowWorker : BackgroundService
         Document document;
         try
         {
-            var pending = await db.Documents
+            var existing = await db.Documents
                 .Include(d => d.DocumentLines)
                 .FirstOrDefaultAsync(
                     d =>
                         d.FamilyId == scan.FamilyId &&
-                        d.FileHash == scan.FileHash &&
-                        d.OcrStatus == ReceiptOcrStatuses.Pending,
+                        d.FileHash == scan.FileHash,
                     cancellationToken)
                 .ConfigureAwait(false);
 
-            if (pending is not null)
+            if (existing is not null)
             {
-                ApplyNormalizedOntoPending(pending, normalized, scan.FullPath, db);
-                pending.ProcessingJobs.Add(
+                ApplyNormalizedOntoPending(existing, normalized, scan.FullPath, db);
+                existing.ProcessingJobs.Add(
                     new ProcessingJob
                     {
                         StartedAt = fileStarted,
                         FinishedAt = finished,
                         Status = ProcessingJobStatuses.Success,
                     });
-                document = pending;
+                document = existing;
             }
             else
             {
