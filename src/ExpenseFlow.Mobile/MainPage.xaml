@@ -1,4 +1,45 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             x:Class="ExpenseFlow.Mobile.MainPage" />
+             x:Class="ExpenseFlow.Mobile.MainPage"
+             Title="ExpenseFlow"
+             BackgroundColor="White">
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Historial" Clicked="OnHistoryClicked" />
+    </ContentPage.ToolbarItems>
+
+    <VerticalStackLayout
+        Padding="24"
+        Spacing="16"
+        VerticalOptions="Center"
+        HorizontalOptions="Center">
+        <Label
+            Text="ExpenseFlow"
+            FontSize="40"
+            FontAttributes="Bold"
+            HorizontalOptions="Center"
+            TextColor="Black" />
+
+        <Button
+            x:Name="CaptureButton"
+            Text="📷 Fotografiar ticket"
+            BackgroundColor="#2563EB"
+            TextColor="White"
+            CornerRadius="12"
+            Padding="16,12"
+            FontSize="18"
+            Clicked="OnCaptureClicked" />
+
+        <Label
+            x:Name="StatusLabel"
+            Text=""
+            HorizontalTextAlignment="Center" />
+
+        <ActivityIndicator
+            x:Name="BusyIndicator"
+            IsVisible="False"
+            IsRunning="False"
+            Color="#2563EB"
+            HorizontalOptions="Center" />
+    </VerticalStackLayout>
+</ContentPage>

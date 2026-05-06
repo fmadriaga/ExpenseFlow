@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:converters="clr-namespace:ExpenseFlow.Mobile.Converters"
+             x:Class="ExpenseFlow.Mobile.HistoryPage"
+             x:Name="HistoryRoot"
+             Title="Historial">
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <converters:OcrStatusColorConverter x:Key="OcrStatusColorConverter" />
+        </ResourceDictionary>
+    </ContentPage.Resources>
+
+    <Grid Padding="16" RowDefinitions="Auto,*">
+        <Label Text="Sin tickets"
+               FontSize="16"
+               TextColor="#6B7280"
+               HorizontalOptions="Center"
+               VerticalOptions="Center"
+               IsVisible="{Binding IsEmpty, Source={x:Reference HistoryRoot}}" />
+
+        <RefreshView Grid.Row="1"
+                     IsRefreshing="{Binding IsRefreshing, Source={x:Reference HistoryRoot}}"
+                     Command="{Binding RefreshCommand, Source={x:Reference HistoryRoot}}">
+            <CollectionView x:Name="TicketsCollection"
+                            ItemsSource="{Binding Items, Source={x:Reference HistoryRoot}}">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Frame Padding="12"
+                               Margin="0,0,0,10"
+                               BorderColor="#E5E7EB"
+                               BackgroundColor="White"
+                               CornerRadius="10"
+                               HasShadow="False">
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{Binding MerchantName, TargetNullValue='Sin nombre'}"
+                                       FontAttributes="Bold"
+                                       FontSize="16"
+                                       TextColor="#111827" />
+
+                                <Label Text="{Binding TransactionDate, StringFormat='{0:dd/MM/yyyy}', TargetNullValue='-'}"
+                                       FontSize="13"
+                                       TextColor="#6B7280" />
+
+                                <Label FontSize="14" TextColor="#111827">
+                                    <Label.FormattedText>
+                                        <FormattedString>
+                                            <Span Text="{Binding TotalAmount, StringFormat='{0:0.##}', TargetNullValue='-'}" />
+                                            <Span Text=" " />
+                                            <Span Text="{Binding Currency, TargetNullValue=''}" />
+                                        </FormattedString>
+                                    </Label.FormattedText>
+                                </Label>
+
+                                <Border StrokeThickness="0"
+                                        Padding="8,4"
+                                        HorizontalOptions="Start"
+                                        BackgroundColor="{Binding OcrStatus, Converter={StaticResource OcrStatusColorConverter}}"
+                                        StrokeShape="RoundRectangle 12">
+                                    <Label Text="{Binding OcrStatus, TargetNullValue='Unknown'}"
+                                           TextColor="White"
+                                           FontSize="12"
+                                           FontAttributes="Bold" />
+                                </Border>
+                            </VerticalStackLayout>
+                        </Frame>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </RefreshView>
+    </Grid>
+</ContentPage>
