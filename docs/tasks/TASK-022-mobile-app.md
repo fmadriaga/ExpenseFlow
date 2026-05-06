@@ -1,6 +1,6 @@
 # TASK-022 App móvil
 
-status: ready
+status: done
 owner: mobile
 priority: low
 
