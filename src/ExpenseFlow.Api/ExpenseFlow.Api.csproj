@@ -1,14 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <ItemGroup>
-    <ProjectReference Include="..\ExpenseFlow.Application\ExpenseFlow.Application.csproj" />
-    <ProjectReference Include="..\ExpenseFlow.Infrastructure\ExpenseFlow.Infrastructure.csproj" />
-  </ItemGroup>
-
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>
 
-</Project>
+  <ItemGroup>
+    <ProjectReference Include="..\ExpenseFlow.Application\ExpenseFlow.Application.csproj" />
+    <ProjectReference Includ

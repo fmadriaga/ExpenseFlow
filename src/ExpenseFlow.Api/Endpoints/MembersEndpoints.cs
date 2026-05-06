@@ -82,8 +82,5 @@ public static class MembersEndpoints
                     to,
                     inputs);
                 return Results.Ok(result);
-            });
-
-        return app;
-    }
-}
+            })
+            .WithSummary("Get 

@@ -89,7 +89,10 @@ public static class DocumentsEndpoints
                     TotalCount = total,
                 };
                 return Results.Ok(body);
-            });
+            })
+            .WithSummary("List documents")
+            .WithDescription(
+                "Paginated list of processed documents. Supports filters: familyId, from, to, status, category.");
 
         group.MapGet(
             "/{id:int}",
@@ -143,7 +146,9 @@ public static class DocumentsEndpoints
                 };
 
                 return Results.Ok(dto);
-            });
+            })
+            .WithSummary("Get document detail")
+            .WithDescription("Returns full document including DocumentLines and raw OCR JSON.");
 
         group.MapPatch(
             "/{id:int}",
@@ -192,7 +197,10 @@ public static class DocumentsEndpoints
 
                 await db.SaveChangesAsync(cancellationToken);
                 return Results.NoContent();
-            });
+            })
+            .WithSummary("Patch document")
+            .WithDescription(
+                "Partially updates editable fields: merchant name, transaction date, total amount, category.");
 
         group.MapGet(
             "/export",
@@ -242,7 +250,10 @@ public static class DocumentsEndpoints
                 await exporter
                     .WriteDocumentExportAsync(query.AsAsyncEnumerable(), writer, sep, cancellationToken)
                     .ConfigureAwait(false);
-            });
+            })
+            .WithSummary("Export documents as CSV")
+            .WithDescription(
+                "Downloads a UTF-8 CSV of documents matching the given filters. Use delimiter=semicolon for European locale.");
 
         group.MapPost(
             "/{id:int}/reprocess",
@@ -316,7 +327,10 @@ public static class DocumentsEndpoints
                 }
 
                 return Results.Ok(new { message = "Documento marcado para reproceso.", id });
-            });
+            })
+            .WithSummary("Reprocess document")
+            .WithDescription(
+                "Resets OcrStatus to Pending and moves the file back to inbox if it was in the error folder. Returns 422 if document is already successful.");
 
         group.MapPost(
             "/{id:int}/split",
@@ -402,7 +416,10 @@ public static class DocumentsEndpoints
                 document.PaidByFamilyMemberId = body.PaidByFamilyMemberId;
                 await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
                 return Results.NoContent();
-            });
+            })
+            .WithSummary("Set expense split")
+            .WithDescription(
+                "Assigns who paid and sets percentage splits per family member. Split percentages must sum to 100.");
 
         return app;
     }
@@ -417,57 +434,4 @@ public static class DocumentsEndpoints
         IQueryable<Document> query,
         int familyId,
         DateOnly? from,
-        DateOnly? to,
-        string? status)
-    {
-        query = query.Where(d => d.FamilyId == familyId);
-        if (from.HasValue)
-        {
-            query = query.Where(d =>
-                d.TransactionDate != null && d.TransactionDate >= from.Value);
-        }
-
-        if (to.HasValue)
-        {
-            query = query.Where(d =>
-                d.TransactionDate != null && d.TransactionDate <= to.Value);
-        }
-
-        if (!string.IsNullOrWhiteSpace(status))
-        {
-            var s = status.Trim();
-            query = query.Where(d => d.OcrStatus == s);
-        }
-
-        return query;
-    }
-
-    private static char ResolveExportDelimiter(string? delimiter)
-    {
-        if (string.IsNullOrWhiteSpace(delimiter))
-        {
-            return ',';
-        }
-
-        var t = delimiter.Trim();
-        if (t is ";" or "semicolon")
-        {
-            return ';';
-        }
-
-        if (t is "," or "comma")
-        {
-            return ',';
-        }
-
-        if (t.Length == 1)
-        {
-            if (t[0] is ',' or ';')
-            {
-                return t[0];
-            }
-        }
-
-        return ',';
-    }
-}
+ 
