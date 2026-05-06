@@ -1,17 +1,35 @@
+using Microsoft.Extensions.DependencyInjection;
+
 namespace ExpenseFlow.Mobile;
 
 public partial class App : Application
 {
-    private readonly MainPage _mainPage;
+    private readonly TabbedPage _tabbedPage;
 
-    public App(MainPage mainPage)
+    public App(IServiceProvider serviceProvider)
     {
         InitializeComponent();
-        _mainPage = mainPage;
+
+        var tabbedPage = new TabbedPage();
+        tabbedPage.Children.Add(
+            new NavigationPage(serviceProvider.GetRequiredService<MainPage>())
+            {
+                Title = "Capturar",
+                IconImageSource = string.Empty,
+            });
+        tabbedPage.Children.Add(
+            new NavigationPage(serviceProvider.GetRequiredService<HistoryPage>())
+            {
+                Title = "Historial",
+                IconImageSource = string.Empty,
+            });
+
+        MainPage = tabbedPage;
+        _tabbedPage = tabbedPage;
     }
 
 	protected override Window CreateWindow(IActivationState? activationState)
 	{
-		return new Window(new NavigationPage(_mainPage));
+		return new Window(_tabbedPage);
 	}
 }
