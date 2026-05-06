@@ -95,6 +95,52 @@ public static class DocumentsEndpoints
                 "Paginated list of processed documents. Supports filters: familyId, from, to, status, category.");
 
         group.MapGet(
+            "/recent",
+            async Task<IResult> (
+                ExpenseFlowDbContext db,
+                CancellationToken cancellationToken,
+                int limit = 20,
+                int familyId = 1) =>
+            {
+                if (!await FamilyExistsAsync(db, familyId, cancellationToken).ConfigureAwait(false))
+                {
+                    return Results.NotFound(new { error = "Familia no encontrada", familyId });
+                }
+
+                if (limit < 1)
+                {
+                    return Results.BadRequest("limit must be >= 1");
+                }
+
+                if (limit > 50)
+                {
+                    limit = 50;
+                }
+
+                var items = await ApplyDocumentFilters(db.Documents.AsNoTracking(), familyId, null, null, null)
+                    .OrderByDescending(d => d.Id)
+                    .Take(limit)
+                    .Select(d => new DocumentSummaryDto
+                    {
+                        Id = d.Id,
+                        MerchantName = d.MerchantName,
+                        TransactionDate = d.TransactionDate,
+                        TotalAmount = d.TotalAmount,
+                        Currency = d.Currency,
+                        Category = d.Category,
+                        OcrStatus = d.OcrStatus,
+                        Confidence = d.Confidence,
+                        CreatedAt = d.CreatedAt,
+                    })
+                    .ToListAsync(cancellationToken);
+
+                return Results.Ok(items);
+            })
+            .WithSummary("Get recent documents")
+            .WithDescription(
+                "Returns the N most recent documents for the mobile history feed. Default limit: 20, max: 50.");
+
+        group.MapGet(
             "/{id:int}",
             async Task<IResult> (int id, ExpenseFlowDbContext db, int familyId = 1, CancellationToken cancellationToken = default) =>
             {
@@ -434,4 +480,57 @@ public static class DocumentsEndpoints
         IQueryable<Document> query,
         int familyId,
         DateOnly? from,
- 
+        DateOnly? to,
+        string? status)
+    {
+        query = query.Where(d => d.FamilyId == familyId);
+        if (from.HasValue)
+        {
+            query = query.Where(d =>
+                d.TransactionDate != null && d.TransactionDate >= from.Value);
+        }
+
+        if (to.HasValue)
+        {
+            query = query.Where(d =>
+                d.TransactionDate != null && d.TransactionDate <= to.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            var s = status.Trim();
+            query = query.Where(d => d.OcrStatus == s);
+        }
+
+        return query;
+    }
+
+    private static char ResolveExportDelimiter(string? delimiter)
+    {
+        if (string.IsNullOrWhiteSpace(delimiter))
+        {
+            return ',';
+        }
+
+        var t = delimiter.Trim();
+        if (t is ";" or "semicolon")
+        {
+            return ';';
+        }
+
+        if (t is "," or "comma")
+        {
+            return ',';
+        }
+
+        if (t.Length == 1)
+        {
+            if (t[0] is ',' or ';')
+            {
+                return t[0];
+            }
+        }
+
+        return ',';
+    }
+}

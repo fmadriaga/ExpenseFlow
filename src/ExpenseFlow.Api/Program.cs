@@ -34,3 +34,11 @@ if (!app.Environment.IsEnvironment("Testing"))
         await db.Database.MigrateAsync();
     }
 }
+
+app.MapGet("/", () => "ExpenseFlow API");
+app.MapDocumentsEndpoints();
+app.MapMembersEndpoints();
+
+await app.RunAsync();
+
+public partial class Program;

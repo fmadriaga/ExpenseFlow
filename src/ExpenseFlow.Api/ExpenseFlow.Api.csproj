@@ -10,4 +10,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ExpenseFlow.Application\ExpenseFlow.Application.csproj" />
-    <ProjectReference Includ
+    <ProjectReference Include="..\ExpenseFlow.Infrastructure\ExpenseFlow.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.15" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.14.11" />
+  </ItemGroup>
+
+</Project>

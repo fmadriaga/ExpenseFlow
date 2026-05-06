@@ -83,4 +83,10 @@ public static class MembersEndpoints
                     inputs);
                 return Results.Ok(result);
             })
-            .WithSummary("Get 
+            .WithSummary("Get member balance")
+            .WithDescription(
+                "Returns the net period balance for a family member across documents with expense splits.");
+
+        return app;
+    }
+}
