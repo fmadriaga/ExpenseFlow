@@ -1,0 +1,72 @@
+version: "3.9"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ExpenseFlow — one-command demo setup
+#
+# Usage:
+#   1. Copy .env.example to .env and fill in your Azure credentials.
+#   2. docker compose up --build
+#
+# The API is available at http://localhost:8080
+# Drop receipt images into ./storage/inbox/ to trigger the OCR pipeline.
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── REST API ────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: src/ExpenseFlow.Api/Dockerfile
+    container_name: expenseflow-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      DOTNET_ENVIRONMENT: Production
+      ConnectionStrings__ExpenseFlow: /data/expenseflow.db
+      # Azure credentials — set these in .env (never commit real values)
+      AzureDocumentIntelligence__Endpoint: ${AZURE_DI_ENDPOINT}
+      AzureDocumentIntelligence__ApiKey:   ${AZURE_DI_API_KEY}
+    volumes:
+      - db-data:/data          # shared SQLite database
+      - logs-data:/logs
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/documents"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── Background Worker (OCR pipeline) ────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: src/ExpenseFlow.Worker/Dockerfile
+    container_name: expenseflow-worker
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      DOTNET_ENVIRONMENT: Production
+      ConnectionStrings__ExpenseFlow: /data/expenseflow.db
+      # Azure credentials — same values as the API
+      AzureDocumentIntelligence__Endpoint:        ${AZURE_DI_ENDPOINT}
+      AzureDocumentIntelligence__ApiKey:          ${AZURE_DI_API_KEY}
+      AzureDocumentIntelligence__MaxRetries:      ${AZURE_DI_MAX_RETRIES:-3}
+      AzureDocumentIntelligence__BaseDelaySeconds: ${AZURE_DI_BASE_DELAY:-1}
+      # Storage paths inside the container
+      Storage__Inbox:     /storage/inbox
+      Storage__Processed: /storage/processed
+      Storage__Error:     /storage/error
+      # Poll interval in seconds
+      Worker__IntervalSeconds: ${WORKER_INTERVAL:-60}
+    volumes:
+      - db-data:/data          # shared SQLite database (same volume as API)
+      - ./storage:/storage     # bind-mount: drop files in ./storage/inbox on host
+      - logs-data:/logs
+
+volumes:
+  db-data:   # named volume for the SQLite file — persists across container restarts
+  logs-data: # named volume for Serilog rolling log files

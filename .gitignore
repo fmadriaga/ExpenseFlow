@@ -486,3 +486,37 @@ $RECYCLE.BIN/
 # ExpenseFlow: base SQLite generada en desarrollo
 /data/expenseflow.db
 data/expenseflow.db
+
+# SQLite WAL y shared-memory (generados en runtime, nunca versionar)
+data/*.db-shm
+data/*.db-wal
+data/*.db-journal
+
+# Tickets originales (datos de usuario, no van al repo)
+# Cubre inbox/ y processed/ de todas las familias, en cualquier nivel de subcarpeta
+storage/**/inbox/*.jpg
+storage/**/inbox/*.jpeg
+storage/**/inbox/*.png
+storage/**/inbox/*.pdf
+storage/**/processed/**/*.jpg
+storage/**/processed/**/*.jpeg
+storage/**/processed/**/*.png
+storage/**/processed/**/*.pdf
+storage/**/error/**/*.jpg
+storage/**/error/**/*.jpeg
+storage/**/error/**/*.png
+storage/**/error/**/*.pdf
+
+# Worktrees internos generados por herramientas de IA (Claude, Cursor, etc.)
+.claude/worktrees/
+
+# Archivos de log generados en runtime
+logs/
+
+# Screenshots originales del teléfono (sin redactar — no commitear)
+docs/screenshots/Screenshot_*.jpg
+docs/screenshots/Screenshot_*.png
+
+# Android Studio / IntelliJ IDEA módulo por proyecto (generado por el IDE)
+*.iml
+!*.sln.iml
