@@ -1,250 +1,286 @@
 # ExpenseFlow
 
-Procesamiento de tickets (OCR) desde una carpeta sincronizada, con persistencia SQLite. MVP documentado en `AGENTS.md` y `docs/architecture.md`.
+> **Receipt OCR pipeline + mobile app** — drop a photo, get a parsed expense record.
 
-## Requisitos
+![.NET](https://img.shields.io/badge/.NET-9.0-512BD4?logo=dotnet)
+![MAUI](https://img.shields.io/badge/.NET%20MAUI-Android%20%7C%20iOS%20%7C%20Windows-68217A?logo=dotnet)
+![Azure](https://img.shields.io/badge/Azure-Document%20Intelligence-0078D4?logo=microsoftazure)
+![SQLite](https://img.shields.io/badge/SQLite-EF%20Core-003B57?logo=sqlite)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-- [.NET 9 SDK](https://dotnet.microsoft.com/download) (misma línea major que el target de los proyectos)
-- [Herramienta `dotnet-ef`](https://learn.microsoft.com/ef/core/cli/dotnet) (para migraciones: `dotnet tool install --global dotnet-ef` o manifiesto local bajo `.config/`)
+ExpenseFlow is a full-stack expense management system. A background Worker watches an inbox folder, sends receipts through Azure Document Intelligence OCR, normalises the result, and persists structured data to SQLite. A REST API exposes the data to a Blazor Server web UI and a .NET MAUI mobile app — which can also snap and upload photos directly from a phone.
 
-## Configuración y variables de entorno (TASK-008)
+---
 
-El Worker valida al arranque la cadena SQLite y las opciones tipadas (`Storage`, `AzureDocumentIntelligence`, `Worker`). **No subas al repositorio** `ApiKey` ni endpoints reales de Azure: usa User Secrets o variables de entorno.
+## Architecture
 
-En .NET, la jerarquía en variables de entorno usa **doble guion bajo** (`__`) como separador de sección y clave.
+```mermaid
+flowchart TD
+    subgraph Mobile["📱 Mobile (MAUI)"]
+        CAM[Camera / Gallery]
+        CROP[SkiaSharp Crop Canvas]
+        INBOX_UP[Upload to API]
+    end
 
-| Variable | Obligatoria | Descripción |
-| --- | --- | --- |
-| `ConnectionStrings__ExpenseFlow` | Sí (Worker y Api) | Ruta o cadena SQLite (p. ej. `../../data/expenseflow.db` relativa al `ContentRoot` del proyecto, o `Data Source=...;`). Debe existir en configuración mergeada; si está vacía o ausente, el proceso termina con error claro. |
-| `Storage__Inbox` | Sí* | Ruta del inbox (*tras bind: no vacía; valores por defecto en `appsettings.json`). |
-| `Storage__Processed` | Sí* | Raíz de procesados. |
-| `Storage__Error` | Sí* | Raíz de errores. |
-| `AzureDocumentIntelligence__Endpoint` | Sí* | URL del recurso (en `Production` no puede quedar vacío; en **Development** aplica `appsettings.Development.json` con placeholder). |
-| `AzureDocumentIntelligence__ApiKey` | Sí* | Clave del servicio (misma nota que `Endpoint`). |
-| `AzureDocumentIntelligence__MaxRetries` | No | Reintentos adicionales tras un fallo **transitorio** del OCR (0–20; por defecto 3, TASK-015). |
-| `AzureDocumentIntelligence__BaseDelaySeconds` | No | Segundos base del backoff exponencial entre reintentos (0,1–300; por defecto 1). |
-| `Worker__IntervalSeconds` | Sí* | Entero ≥ 1 (por defecto 60 en `appsettings.json`). |
+    subgraph Backend["🖥️ Backend"]
+        subgraph Worker["Worker Service"]
+            SCAN[File Scanner\nper Family]
+            OCR_CALL[Azure Document\nIntelligence OCR]
+            NORM[Receipt Normaliser\n+ Categoriser]
+            DB_WRITE[EF Core → SQLite]
+            MOVE[FileMover\nprocessed / error]
+        end
 
-\*Tras la carga de `appsettings.json` + `appsettings.{Environment}.json` + User Secrets + variables de entorno. Con `DOTNET_ENVIRONMENT=Production` y solo el `appsettings.json` base, **Azure** debe definirse por entorno o el arranque falla con `OptionsValidationException`.
+        subgraph API["ASP.NET Core API"]
+            DOCS[GET /documents]
+            DETAIL[GET /documents/:id]
+            PATCH[PATCH /documents/:id]
+            REPR[POST /documents/:id/reprocess]
+            EXPORT[GET /documents/export CSV]
+        end
 
-### CategoryRules (TASK-012)
+        subgraph Web["Blazor Server"]
+            LIST_PAGE[Document List]
+            DETAIL_PAGE[Detail + Edit]
+        end
+    end
 
-El Worker asigna `Document.Category` después de normalizar el OCR y antes de guardar. Las reglas son opcionales y se leen solo en `ExpenseFlow.Worker`: objeto JSON cuya **clave** es el nombre de categoría que se persistirá y cuyo **valor** es un array de subcadenas buscadas en `MerchantName` (sin distinguir mayúsculas). Si no hay coincidencia, se usa `otros`.
+    subgraph Azure["☁️ Azure"]
+        ADI[Document Intelligence\nprebuilt-receipt]
+    end
 
-Ejemplo en `src/ExpenseFlow.Worker/appsettings.json`:
-
-```json
-"CategoryRules": {
-  "supermercado": ["walmart", "carrefour", "disco"],
-  "combustible": ["ypf", "shell", "axion"]
-}
+    CAM --> CROP --> INBOX_UP --> API
+    SCAN --> OCR_CALL --> ADI
+    ADI --> NORM --> DB_WRITE --> MOVE
+    API --> DOCS & DETAIL & PATCH & REPR & EXPORT
+    DOCS --> LIST_PAGE
+    DETAIL --> DETAIL_PAGE
+    PATCH --> DETAIL_PAGE
+    Mobile --> DETAIL & PATCH & REPR
 ```
 
-Si omites `CategoryRules` en el Worker, el categorizador deja todos los documentos en `otros`.
+---
 
-### User Secrets (setup local recomendado)
+## Project structure
 
-Desde la carpeta del Worker:
+| Project | Layer | Responsibility |
+|---|---|---|
+| `ExpenseFlow.Domain` | Domain | Entities (`Document`, `DocumentLine`, `Family`, `FamilyMember`), domain rules |
+| `ExpenseFlow.Application` | Application | Use-case interfaces, DTOs, `IReceiptOcrProvider`, `IFileMover`, `IFileScanner` |
+| `ExpenseFlow.Infrastructure` | Infrastructure | EF Core `DbContext`, migrations, Azure OCR adapter, `FileMover`, `FileScanner`, mapper |
+| `ExpenseFlow.Worker` | Host | `BackgroundService` — 60 s polling loop with overlap guard, Serilog file sink, .NET metrics |
+| `ExpenseFlow.Api` | Host | ASP.NET Core minimal API — documents CRUD, reprocess, CSV export |
+| `ExpenseFlow.Web` | Host | Blazor Server — paginated list, detail + edit form |
+| `ExpenseFlow.Mobile` | Client | .NET MAUI — camera capture, SkiaSharp crop canvas, history + detail screens |
+
+---
+
+## Tech stack
+
+| Technology | Used for | Why |
+|---|---|---|
+| **.NET 9 / C# 13** | All layers | Single language end-to-end, top-of-class async & records |
+| **Azure Document Intelligence** | OCR | `prebuilt-receipt` model handles merchant, date, amounts, line items out-of-the-box |
+| **EF Core 9 + SQLite** | Persistence | Zero-infrastructure database; migrations keep schema in sync automatically |
+| **ASP.NET Core Minimal API** | REST layer | Low-ceremony endpoints with OpenAPI support |
+| **Blazor Server** | Web UI | C# on the server, no JS build toolchain, real-time-ready |
+| **.NET MAUI** | Mobile | One codebase → Android + iOS + Windows; native camera & file APIs |
+| **SkiaSharp** | Crop canvas | Cross-platform GPU-accelerated 2-D drawing; touch events without platform-specific code |
+| **Serilog** | Structured logging | Daily rolling file sink + console scopes with `JobId` correlation |
+| **.NET Meters API** | Metrics | `files.found / processed_ok / processed_failed` counters via `dotnet-counters` |
+| **Plugin.LocalNotification** | Push (mobile) | Native Android/iOS notifications when OCR completes, without a push server |
+
+---
+
+## Key features
+
+**OCR pipeline**
+- Watches one or more family inbox folders; detects `jpg`, `jpeg`, `png`, `pdf` files.
+- SHA-256 hash deduplication — re-uploading the same file is a no-op.
+- Azure Document Intelligence `prebuilt-receipt` → structured `Document` + `DocumentLine` rows.
+- Exponential-backoff retry for transient Azure failures (configurable 0–20 retries).
+- Confidence score stored per document; used to surface low-quality extractions.
+- Raw JSON response stored so re-mapping is possible without re-calling Azure.
+
+**Worker reliability**
+- `SemaphoreSlim` overlap guard — a slow cycle is logged and skipped, never double-run.
+- Each batch tagged with a `JobId` scope for end-to-end log tracing.
+- Files that fail the pipeline land in `error/yyyy/MM/`; reprocess moves them back to inbox.
+
+**Mobile app**
+- Camera capture → SkiaSharp crop canvas with touch-drag handles.
+- EXIF orientation auto-correction (`SKCodec` + canvas rotation) — Samsung S23 portrait shots work correctly.
+- History screen with 30 s live polling and status badges (Success / Pending / Failed).
+- Detail screen: edit merchant, date, amount; one-tap reprocess for failed tickets.
+- Local push notification (Android & iOS) when OCR finishes.
+
+**API & Web**
+- Paginated document list with `from`, `to`, `status`, `category`, `familyId` filters.
+- `PATCH /documents/{id}` — partial update of business fields.
+- `POST /documents/{id}/reprocess` — restores file from error folder and re-queues.
+- `GET /documents/export` — UTF-8 CSV with comma or semicolon delimiter.
+- Expense splitting: `POST /documents/{id}/split` with per-member percentage breakdown.
+- Member balance report: `GET /members/{id}/balance` filtered by date range.
+
+---
+
+## Getting started
+
+### Prerequisites
+
+- [.NET 9 SDK](https://dotnet.microsoft.com/download)
+- `dotnet-ef` tool: `dotnet tool install --global dotnet-ef`
+- An [Azure Document Intelligence](https://azure.microsoft.com/products/ai-services/ai-document-intelligence) resource (Free tier works for testing)
+
+### 1 — Clone
+
+```bash
+git clone https://github.com/<you>/ExpenseFlow.git
+cd ExpenseFlow
+```
+
+### 2 — Configure secrets
 
 ```bash
 dotnet user-secrets init --project src/ExpenseFlow.Worker
-dotnet user-secrets set "AzureDocumentIntelligence:Endpoint" "https://<tu-recurso>.cognitiveservices.azure.com/" --project src/ExpenseFlow.Worker
-dotnet user-secrets set "AzureDocumentIntelligence:ApiKey" "<tu-key>" --project src/ExpenseFlow.Worker
+dotnet user-secrets set "AzureDocumentIntelligence:Endpoint" "https://<resource>.cognitiveservices.azure.com/" --project src/ExpenseFlow.Worker
+dotnet user-secrets set "AzureDocumentIntelligence:ApiKey"   "<your-key>"                                    --project src/ExpenseFlow.Worker
 ```
 
-User Secrets tienen prioridad sobre `appsettings` y no se versionan. Para sustituir la cadena SQLite o rutas de `Storage`, puedes usar la misma convención (`ConnectionStrings:ExpenseFlow`, `Storage:Inbox`, etc.).
+### 3 — Create the database
 
-### Entorno Development vs Production
-
-- **`dotnet run --project src/ExpenseFlow.Worker`** usa `launchSettings.json` con `DOTNET_ENVIRONMENT=Development`, carga `appsettings.Development.json` (placeholders de Azure **no válidos para OCR real**) y permite arrancar sin variables extra; para procesar tickets, configura User Secrets con credenciales reales.
-- **Production:** configura todas las claves críticas por entorno o por ficheros desplegados fuera del repo; sin `Endpoint`/`ApiKey` el proceso falla al arranque con mensaje de validación explícito.
-
-### Migraciones EF y entorno
-
-Si ejecutas `dotnet ef` con entorno `Production` y sin Azure configurado, la validación puede fallar. Usa Development al aplicar migraciones en local, por ejemplo (PowerShell):
-
-```powershell
-$env:DOTNET_ENVIRONMENT = 'Development'
+```bash
 dotnet ef database update --project src/ExpenseFlow.Infrastructure --startup-project src/ExpenseFlow.Worker
 ```
 
-## Estructura del repositorio
-
-| Ruta | Uso |
-| --- | --- |
-| `src/ExpenseFlow.Domain` | Entidades y reglas de dominio |
-| `src/ExpenseFlow.Application` | Casos de uso, contratos, DTOs internos |
-| `src/ExpenseFlow.Infrastructure` | EF Core (`ExpenseFlowDbContext`, migraciones), integraciones, filesystem |
-| `src/ExpenseFlow.Worker` | Proceso por lotes en segundo plano |
-| `src/ExpenseFlow.Api` | API HTTP de consulta de documentos (TASK-010) |
-| `src/ExpenseFlow.Web` | Blazor Server: revisión de documentos y edición vía API (TASK-019) |
-| `docs/` | Visión, arquitectura y tasks |
-| `tests/ExpenseFlow.IntegrationTests` | Pruebas de integración (SQLite, escáner, mapper OCR, FileMover, Worker) |
-| `tests/ExpenseFlow.Application.Tests` | Pruebas unitarias (p. ej. normalizador de recibos) |
-| `data/` | Datos locales: base SQLite `expenseflow.db` (generada; no commitear) |
-| `storage/familia/` (subcarpetas `inbox`, `processed`, `error`) | Inbox y salidas de archivos (según arquitectura) |
-
-## Compilar y probar
+### 4 — Create inbox folders
 
 ```bash
-dotnet build ExpenseFlow.sln -c Release
-dotnet test ExpenseFlow.sln
+mkdir -p storage/familia/inbox storage/familia/processed storage/familia/error
 ```
 
-## Base de datos (SQLite)
-
-- La cadena **`ConnectionStrings:ExpenseFlow` es obligatoria** (ver `appsettings.json`: por defecto
-  `../../data/expenseflow.db` relativa al `ContentRoot` del Worker). El directorio `data` se crea
-  al resolver la ruta si no existe.
-- El fichero de base generado se ignora en el control de versiones (vía `.gitignore`); no lo subas al repositorio.
-- Override: cadena completa SQLite o ruta a fichero (sin `=`) vía `ConnectionStrings__ExpenseFlow` o User Secrets.
-- Migraciones: proyecto de modelos `src/ExpenseFlow.Infrastructure`, host de arranque `src/ExpenseFlow.Worker`:
+### 5 — Run
 
 ```bash
-dotnet ef migrations add Nombre --project src/ExpenseFlow.Infrastructure --startup-project src/ExpenseFlow.Worker
-dotnet ef database update --project src/ExpenseFlow.Infrastructure --startup-project src/ExpenseFlow.Worker
-```
-
-El Worker aplica `Migrate()` al arrancar para mantener el esquema al día en desarrollo.
-
-- **TASK-005:** migración `AddDocumentNormalizationFields` (normalización en `Documents` /
-  `DocumentLines`). No cambia el procedimiento habitual: al ejecutar el Worker se aplica sola; solo
-  necesitas `dotnet ef database update` manual si mantienes la SQLite sin arrancar el Worker.
-
-## Rutas de almacenamiento y escáner (TASK-003 / TASK-020)
-
-- **Multi-familia (TASK-020):** las carpetas por perfil están en la tabla `Families` (inbox / processed / error por fila). El Worker itera cada familia en cada ciclo; las rutas son relativas al `ContentRoot` del Worker o absolutas (misma resolución que antes para `Storage`).
-- La sección `Storage` en `appsettings` del **Worker** y de la **Api** sigue siendo útil como referencia y para `IFileMover`/`IFileRestorer` con las sobrecargas “por defecto”; el escaneo batch usado por el Worker no lee `Storage:Inbox` para listar — lee las filas de `Families`.
-- Tras `dotnet ef database update`, existen al menos la familia `1` (rutas por defecto bajo `storage/familia/...`) y la `2` (ejemplo bajo `storage/familia2/...`). Crea las carpetas o ajusta las filas en BD si hace falta.
-- `IFileScanner` recibe inbox y raíces processed/error ya resueltas por familia; `IFileMover` mueve usando esa familia (TASK-007).
-- Si el **inbox** de una familia no existe, el escáner registra advertencia y no devuelve candidatos para esa familia.
-
-## Movimiento a processed/error (TASK-006)
-
-- `IFileMover` / `FileMover` mueven archivos bajo las rutas raíz `Processed` y `Error` de la
-  sección `Storage`, creando automáticamente las subcarpetas `yyyy/MM` (UTC) y, si hace falta,
-  las propias raíces; **no** es necesario crear esa jerarquía a mano antes de un movimiento.
-- Colisiones de nombre en el destino se resuelven con un nombre alternativo sin sobrescribir.
-- El bucle del Worker invoca el mover tras persistir cada documento (ver «Worker: ejecución local
-  del pipeline completo» más abajo).
-
-## OCR Azure (TASK-004)
-
-- El proveedor OCR implementa `IReceiptOcrProvider` y usa Azure Document Intelligence
-  (`prebuilt-receipt`).
-- **No pongas credenciales reales en `appsettings.json` del repositorio.** En `Production` los
-  campos vacíos del archivo base hacen fallar la validación al arranque; en **Development**,
-  `appsettings.Development.json` trae placeholders no secretos solo para poder arrancar el host
-  (sustituye por User Secrets para llamadas reales a Azure). Tabla de variables: sección
-  **Configuración y variables de entorno** arriba.
-
-## Worker: ejecución local del pipeline completo (TASK-007)
-
-1. **Carpeta inbox:** debe existir la ruta configurada en `Storage:Inbox` (por defecto
-   `storage/familia/inbox` relativa al `ContentRoot` del proyecto Worker). Coloca ahí un ticket
-   válido (`jpg`, `jpeg`, `png`, `pdf`, no vacío).
-2. **Azure Document Intelligence:** para OCR real, configura User Secrets o variables de entorno
-   (ver sección de configuración). Los placeholders de Development no son credenciales válidas.
-3. **Intervalo entre ciclos:** sección `Worker` → `IntervalSeconds` en `appsettings.json` o
-   `Worker__IntervalSeconds`.
-4. **Base de datos:** `ConnectionStrings:ExpenseFlow` obligatoria (valor por defecto en
-   `appsettings.json` apuntando a `data/expenseflow.db`).
-5. **Rutas de almacenamiento (opcional):** `Storage__Inbox`, `Storage__Processed`, `Storage__Error`.
-
-**Comando:**
-
-```bash
+# Terminal 1 — background Worker (OCR pipeline)
 dotnet run --project src/ExpenseFlow.Worker
-```
 
-Al arranque se aplican migraciones SQLite. A continuación `ExpenseFlowWorker` ejecuta ciclos: escaneo
-→ OCR → normalización → persistencia → movimiento a `processed` o `error` (sin reintentos
-automáticos).
-
-**Cómo comprobar que el ciclo corre:** en consola (nivel Information) deberías ver, en cada ciclo,
-mensajes equivalentes a: inicio de job con timestamp, número de archivos pendientes devueltos por
-el escáner, y al cerrar el ciclo una línea con **Files found**, **processed OK** y **failed**. Si un
-ciclo anterior sigue en curso, verás una advertencia de que se omite el solapamiento. Tras un
-procesamiento correcto, el archivo desaparece del inbox y aparece bajo `processed/yyyy/MM/`; si
-falla el pipeline del archivo, acaba en `error/yyyy/MM/` (salvo errores extremos de disco).
-
-## Logging básico (TASK-009)
-
-- Cada corrida del Worker incluye un `JobId` de correlación (scope de logging en consola).
-- Para diagnosticar un archivo de punta a punta, busca por `JobId` y luego por `FileName`.
-- Eventos clave esperables:
-  - `Information`: inicio/fin de job, candidato detectado, movido a `processed`.
-  - `Warning`: duplicado por hash, movido a `error` con motivo breve.
-  - `Error`: OCR fallido, persistencia fallida, fallo de movimiento.
-- Niveles de consola en `appsettings.json`: `Default=Information`, `Microsoft=Warning`,
-  `System=Warning`, `Console.IncludeScopes=true`.
-- Seguridad: los logs no deben contener `ApiKey` ni connection strings.
-
-## Logs persistentes y métricas (TASK-018)
-
-- El Worker escribe además en un **fichero** (relativo al proyecto: `../../logs/expenseflow-.log` por
-  defecto), con **rotación diaria** y retención de archivos (`retainedFileCountLimit`, p. ej. 14).
-  Ajusta ruta y límite bajo `Serilog:WriteTo` en `src/ExpenseFlow.Worker/appsettings.json`.
-- Métricas de ciclo (meter `ExpenseFlow.Worker`), p. ej. `files.found`, `files.processed_ok`,
-  `files.processed_failed`:
-
-```bash
-dotnet-counters monitor -p <pid> --counters ExpenseFlow.Worker
-```
-
-## Api de consulta (TASK-010)
-
-El proyecto `ExpenseFlow.Api` usa la misma cadena SQLite y la sección `Storage` que el Worker
-(`appsettings.json`). Al arrancar aplica migraciones y expone:
-
-- `GET /documents` — listado paginado (`page`, `pageSize`, opcionalmente `familyId` por defecto `1`, `from`, `to`, `status`, `category`), incluye `category` asignada por el Worker (TASK-012).
-- `GET /documents/{id}` — detalle con líneas y `RawJson` (el listado no incluye `RawJson`); `familyId` opcional.
-- `PATCH /documents/{id}` — edición parcial (campos de negocio: comercio, fecha, total, categoría) para la UI (TASK-019); `familyId` opcional.
-- `POST /documents/{id}/split` — reparto y quién pagó: `paidByFamilyMemberId` y `splits` (cada `familyMemberId` + `percentage`); la suma de porcentajes debe ser 100% (TASK-021).
-- `GET /members/{id}/balance` — balance del miembro: `from`, `to` (DateOnly) y `familyId` (defecto 1); solo documentos con reparto, `OcrStatus=Success` y fecha de transacción en rango.
-- `POST /documents/{id}/reprocess` — marca el documento para reproceso (`OcrStatus` = `Pending`) y, si el fichero está bajo `error/`, lo vuelve a colocar en `inbox/` (mismo hash en base de datos). `422` si el documento ya está en `Success`.
-- `GET /documents/export` — descarga CSV (UTF-8 con BOM) del histórico; opciones `from`, `to`, `status` (como el listado), `delimiter=comma` (defecto) o `delimiter=semicolon` para separador `;` (TASK-013).
-
-**Ejecutar en local:**
-
-```bash
+# Terminal 2 — REST API
 dotnet run --project src/ExpenseFlow.Api
-```
 
-Con el perfil `http` de `launchSettings.json` la URL base suele ser `http://localhost:5287`
-(mira la consola al arrancar). Ejemplos:
-
-```bash
-curl -s http://localhost:5287/documents
-curl -s http://localhost:5287/documents/1
-curl -s -X POST http://localhost:5287/documents/1/reprocess
-curl -s -o export.csv http://localhost:5287/documents/export
-```
-
-Si la base está vacía, el listado devuelve `items` vacío y `totalCount` 0. Tras procesar tickets con el Worker, los mismos documentos son visibles por la API.
-
-## UI web de revisión (TASK-019)
-
-- Proyecto `ExpenseFlow.Web` (Blazor Server). La URL de la API se configura con `ExpenseFlowApi:BaseUrl` (por defecto `http://localhost:5287` en `appsettings.json`); `ExpenseFlowApi:FamilyId` filtra por perfil (por defecto `1`, TASK-020).
-- Arranca la **Api** y luego la web:
-
-```bash
-dotnet run --project src/ExpenseFlow.Api
+# Terminal 3 — Blazor web UI (optional)
 dotnet run --project src/ExpenseFlow.Web
 ```
 
-- Listado con paginación y filtros; detalle con líneas, `RawJson` y formulario de corrección (PATCH al documento).
+Drop a receipt photo into `storage/familia/inbox/` and watch the Worker process it. The document appears immediately in the API and Blazor UI, and as a push notification on the mobile app.
 
-## Ejecutar (referencia rápida)
+For the mobile app, set `ExpenseFlow:ApiBaseUrl` in `src/ExpenseFlow.Mobile/appsettings.json` to your machine's LAN IP and deploy to a device or emulator.
 
-- Worker: `dotnet run --project src/ExpenseFlow.Worker` — detalle y variables en la sección anterior.
-- API: `dotnet run --project src/ExpenseFlow.Api` — ver sección **Api de consulta** arriba.
-- Web (TASK-019): `dotnet run --project src/ExpenseFlow.Web` — requiere la API en marcha; ver sección **UI web de revisión**.
+---
 
-## Referencia de capas
+## Docker (one-command demo)
 
-- `Application` referencia `Domain`
-- `Infrastructure` referencia `Application` y `Domain`
-- `Worker` y `Api` referencian `Application` e `Infrastructure`
+```bash
+cp .env.example .env
+# Edit .env with your Azure Document Intelligence endpoint and key
+docker compose up --build
+```
 
-Más detalle: `docs/architecture.md`.
+The API is available at **http://localhost:8080**. Drop receipt images into `./storage/inbox/` on your host machine and the Worker will pick them up automatically.
+
+| Container | Image base | What it does |
+|---|---|---|
+| `expenseflow-api` | `mcr.microsoft.com/dotnet/aspnet:9.0` | Serves the REST API on port 8080 |
+| `expenseflow-worker` | `mcr.microsoft.com/dotnet/aspnet:9.0` | Polls inbox, calls Azure OCR, writes to SQLite |
+
+Both containers share a named Docker volume for the SQLite database. The `./storage/` folder on your host is bind-mounted into the Worker so you can drop files without going inside the container.
+
+---
+
+## Configuration reference
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `ConnectionStrings__ExpenseFlow` | ✅ | `../../data/expenseflow.db` | SQLite path relative to Worker `ContentRoot` |
+| `AzureDocumentIntelligence__Endpoint` | ✅ (prod) | placeholder | Azure resource URL |
+| `AzureDocumentIntelligence__ApiKey` | ✅ (prod) | placeholder | Azure API key — use secrets, never commit |
+| `AzureDocumentIntelligence__MaxRetries` | ❌ | `3` | Retry count for transient OCR failures (0–20) |
+| `AzureDocumentIntelligence__BaseDelaySeconds` | ❌ | `1` | Base seconds for exponential backoff |
+| `Worker__IntervalSeconds` | ✅ | `60` | Poll interval in seconds |
+| `Storage__Inbox` | ✅ | `storage/familia/inbox` | Default inbox path |
+| `Storage__Processed` | ✅ | `storage/familia/processed` | Processed files root |
+| `Storage__Error` | ✅ | `storage/familia/error` | Failed files root |
+
+Environment variables use `__` as separator (e.g. `AzureDocumentIntelligence__ApiKey`).
+
+---
+
+## API endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/documents` | Paginated list — filters: `page`, `pageSize`, `from`, `to`, `status`, `category`, `familyId` |
+| `GET` | `/documents/{id}` | Full detail with line items |
+| `PATCH` | `/documents/{id}` | Edit merchant name, transaction date, total amount |
+| `POST` | `/documents/{id}/reprocess` | Re-queue for OCR (moves file back to inbox) |
+| `POST` | `/documents/{id}/split` | Record expense split with per-member percentages |
+| `GET` | `/members/{id}/balance` | Member balance report filtered by date range |
+| `GET` | `/documents/export` | Download CSV (comma or semicolon delimiter) |
+
+---
+
+## Tests
+
+```bash
+dotnet test ExpenseFlow.sln
+```
+
+| Test project | What's covered |
+|---|---|
+| `ExpenseFlow.IntegrationTests` | Full Worker pipeline (SQLite in-process), `FileScanner`, `FileMover`, OCR mapper, duplicate hash detection, reprocess flow, CSV export, member balance |
+| `ExpenseFlow.Application.Tests` | Receipt normaliser unit tests, category rules engine |
+
+---
+
+## Design decisions
+
+**Clean Architecture with explicit layer boundaries** — Domain has zero external dependencies. Application defines contracts. Infrastructure implements them. Hosts wire everything. This makes the OCR provider, file system, and database all swappable by replacing one adapter.
+
+**Worker decoupling from API** — The Worker and API share only the SQLite database. The Worker has no HTTP surface; the API is read/write only, never triggers OCR. This means each process can be scaled, restarted, or deployed independently.
+
+**Raw JSON storage** — Azure's full JSON response is persisted alongside the parsed fields. When a mapper bug is found (like the PascalCase regression in this project), documents can be re-mapped from stored data without re-calling Azure and incurring cost.
+
+**SkiaSharp for the crop canvas** — MAUI's built-in drawing APIs are too limited for touch-driven interactive crop handles. SkiaSharp gives pixel-level control and runs identically on Android, iOS, and Windows from a single implementation.
+
+**EXIF orientation handling** — `SKBitmap.Decode()` silently strips EXIF metadata, returning rotated pixels. The fix uses `SKCodec.Create()` to read `EncodedOrigin` before decoding, then applies a canvas rotation transform. This is the correct approach for any SkiaSharp image pipeline that accepts camera input.
+
+---
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/01_capture_ok.png" width="22%" alt="Pantalla principal" />
+  <img src="docs/screenshots/02_crop_ok.png"    width="22%" alt="Canvas de recorte" />
+  <img src="docs/screenshots/03_history_ok.png" width="22%" alt="Historial" />
+  <img src="docs/screenshots/04_detail_ok.png"  width="22%" alt="Detalle del ticket" />
+</p>
+
+<p align="center">
+  <em>Captura · Recorte · Historial · Detalle</em>
+</p>
+
+---
+
+## Known limitations & next steps
+
+- **No authentication** — the API and Web UI are open. Adding ASP.NET Core Identity or Azure AD B2C is the natural next step.
+- **Local SQLite only** — production would benefit from Azure SQL or Postgres with a proper connection pool.
+- **iOS push notifications** — `Plugin.LocalNotification` is conditionally compiled; a real device + APNs certificate is needed to verify.
+- **Blazor UI styling** — functional but unstyled; a Tailwind or MudBlazor pass would make it presentable.
+- **Azure Blob Storage** — current design uses the local filesystem; Blob Storage would make the Worker stateless and cloud-deployable.
+
+---
+
+## License
+
+MIT © Fernando Madriaga
