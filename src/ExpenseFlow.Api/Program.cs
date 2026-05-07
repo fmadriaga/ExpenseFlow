@@ -38,6 +38,7 @@ if (!app.Environment.IsEnvironment("Testing"))
 app.MapGet("/", () => "ExpenseFlow API");
 app.MapDocumentsEndpoints();
 app.MapMembersEndpoints();
+app.MapUploadEndpoints();
 
 await app.RunAsync();
 
