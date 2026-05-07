@@ -21,7 +21,7 @@ public sealed class ReceiptNormalizer : IReceiptNormalizer
             RawJson = ocrResult.RawJson,
             MerchantName = string.IsNullOrWhiteSpace(ocrResult.MerchantName)
                 ? null
-                : ocrResult.MerchantName.Trim(),
+                : NormalizeMerchantName(ocrResult.MerchantName),
             TransactionDate = ocrResult.TransactionDate,
             Currency = string.IsNullOrWhiteSpace(ocrResult.Currency)
                 ? null
@@ -111,6 +111,18 @@ public sealed class ReceiptNormalizer : IReceiptNormalizer
 
         return hasSecondary ? ReceiptOcrStatuses.Partial : ReceiptOcrStatuses.Failed;
     }
+
+    /// <summary>
+    /// Collapses embedded line-breaks and redundant whitespace in OCR merchant names.
+    /// Azure Document Intelligence returns multi-line receipt headers as a single string
+    /// with '\n' separators (e.g. "farmacias\nPIGALLE"). This normalizes them to a single
+    /// space-separated value so the name displays cleanly and keyword matching works correctly.
+    /// </summary>
+    private static string NormalizeMerchantName(string raw) =>
+        string.Join(
+            ' ',
+            raw.Split(['\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+           .Trim();
 
     private static decimal ComputeLineAmount(OcrLineItem line)
     {

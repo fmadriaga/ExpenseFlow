@@ -142,4 +142,26 @@ public class ReceiptNormalizerTests
         Assert.Equal("ACME", doc.MerchantName);
         Assert.Equal("USD", doc.Currency);
     }
+
+    [Theory]
+    [InlineData("farmacias\nPIGALLE",       "farmacias PIGALLE")]
+    [InlineData("farmacias\r\nPIGALLE",     "farmacias PIGALLE")]
+    [InlineData("LINE1\nLINE2\nLINE3",      "LINE1 LINE2 LINE3")]
+    [InlineData("  Shop\n  Branch  ",       "Shop Branch")]
+    [InlineData("NoNewlines",               "NoNewlines")]
+    [InlineData("  Padded  ",              "Padded")]
+    public void Normalize_collapses_embedded_newlines_in_merchant_name(string input, string expected)
+    {
+        var ocr = new OcrResult(
+            MerchantName: input,
+            TransactionDate: null,
+            TotalAmount: 1m,
+            TaxAmount: null,
+            RawJson: "{}",
+            Lines: Array.Empty<OcrLineItem>());
+
+        var doc = _normalizer.Normalize(ocr, "/a", "h");
+
+        Assert.Equal(expected, doc.MerchantName);
+    }
 }
