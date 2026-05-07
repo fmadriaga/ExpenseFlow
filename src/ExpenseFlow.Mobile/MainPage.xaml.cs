@@ -76,7 +76,7 @@ public partial class MainPage : ContentPage
                 await stream.CopyToAsync(buffer);
                 buffer.Position = 0;
 
-                var bitmap = SKBitmap.Decode(buffer);
+                var bitmap = DecodeWithExifOrientation(buffer);
                 if (bitmap is null)
                 {
                     StatusLabel.Text = "No se pudo abrir la imagen.";
@@ -139,5 +139,60 @@ public partial class MainPage : ContentPage
         var historyPage = services?.GetService<HistoryPage>();
         if (historyPage is not null)
             await Navigation.PushAsync(historyPage);
+    }
+
+    /// <summary>
+    /// Decodifica el stream de imagen y aplica la rotación indicada por la etiqueta EXIF de orientación,
+    /// que Android ignora al guardar fotos de cámara. Sin esto, las fotos tomadas en landscape
+    /// aparecen giradas 90° en el crop UI y llegan rotadas al OCR.
+    /// </summary>
+    private static SKBitmap? DecodeWithExifOrientation(Stream stream)
+    {
+        using var codec = SKCodec.Create(stream);
+        if (codec is null)
+            return null;
+
+        var origin = codec.EncodedOrigin;
+        using var raw = SKBitmap.Decode(codec);
+        if (raw is null)
+            return null;
+
+        return origin switch
+        {
+            SKEncodedOrigin.RightTop    => RotateBitmap(raw, 90f),    // landscape CW  (EXIF 6)
+            SKEncodedOrigin.BottomRight => RotateBitmap(raw, 180f),   // upside-down   (EXIF 3)
+            SKEncodedOrigin.LeftBottom  => RotateBitmap(raw, 270f),   // landscape CCW (EXIF 8)
+            SKEncodedOrigin.LeftTop     => FlipBitmap(raw, horizontal: true),   // EXIF 2
+            SKEncodedOrigin.RightBottom => FlipBitmap(raw, horizontal: false),  // EXIF 7
+            _                           => raw.Copy(),  // TopLeft (normal, EXIF 1) — just take ownership
+        };
+    }
+
+    private static SKBitmap RotateBitmap(SKBitmap source, float degrees)
+    {
+        var swapDims = Math.Abs(degrees % 180f) > 45f;
+        var w = swapDims ? source.Height : source.Width;
+        var h = swapDims ? source.Width : source.Height;
+        var result = new SKBitmap(w, h);
+        using var canvas = new SKCanvas(result);
+        canvas.Clear(SKColors.White);
+        canvas.Translate(w / 2f, h / 2f);
+        canvas.RotateDegrees(degrees);
+        canvas.Translate(-source.Width / 2f, -source.Height / 2f);
+        canvas.DrawBitmap(source, 0, 0);
+        return result;
+    }
+
+    private static SKBitmap FlipBitmap(SKBitmap source, bool horizontal)
+    {
+        var result = new SKBitmap(source.Width, source.Height);
+        using var canvas = new SKCanvas(result);
+        canvas.Clear(SKColors.White);
+        if (horizontal)
+            canvas.Scale(-1f, 1f, source.Width / 2f, source.Height / 2f);
+        else
+            canvas.Scale(1f, -1f, source.Width / 2f, source.Height / 2f);
+        canvas.DrawBitmap(source, 0, 0);
+        return result;
     }
 }

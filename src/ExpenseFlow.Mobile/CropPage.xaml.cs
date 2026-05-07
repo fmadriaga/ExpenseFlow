@@ -25,10 +25,7 @@ public partial class CropPage : ContentPage
     private DragHandle _dragHandle = DragHandle.None;
     private bool _dragging;
     private SKRect _cropAtGestureStart;
-    private double _lastPanTotalX;
-    private double _lastPanTotalY;
-    private SKRect _cropAtPinchStart;
-    private float _pinchScaleAccum = 1f;
+    private SKPoint _lastTouchPoint;
     private float _viewToSurfaceScaleX = 1f;
     private float _viewToSurfaceScaleY = 1f;
     private bool _completed;
@@ -133,47 +130,36 @@ public partial class CropPage : ContentPage
     private SKPoint ViewPointToSurface(Point p) =>
         new((float)(p.X * _viewToSurfaceScaleX), (float)(p.Y * _viewToSurfaceScaleY));
 
-    private void OnPointerPressed(object? sender, PointerEventArgs e)
+    private void OnCanvasTouch(object? sender, SKTouchEventArgs e)
     {
-        var pt = ViewPointToSurface(e.GetPosition(Canvas) ?? default);
-        _dragHandle = HitTest(pt);
-        _dragging = _dragHandle != DragHandle.None;
-        if (_dragging)
-            _cropAtGestureStart = _cropRect;
-        _lastPanTotalX = 0;
-        _lastPanTotalY = 0;
-    }
+        e.Handled = true;
 
-    private void OnPointerReleased(object? sender, PointerEventArgs e)
-    {
-        _dragging = false;
-        _dragHandle = DragHandle.None;
-    }
-
-    private void OnPanUpdated(object? sender, PanUpdatedEventArgs e)
-    {
-        if (e.StatusType == GestureStatus.Started)
+        switch (e.ActionType)
         {
-            _lastPanTotalX = 0;
-            _lastPanTotalY = 0;
-            return;
-        }
+            case SKTouchAction.Pressed:
+                _dragHandle = HitTest(e.Location);
+                _dragging = _dragHandle != DragHandle.None;
+                _cropAtGestureStart = _cropRect;
+                _lastTouchPoint = e.Location;
+                break;
 
-        if (e.StatusType == GestureStatus.Running && _dragging && _dragHandle != DragHandle.None)
-        {
-            var dx = (float)((e.TotalX - _lastPanTotalX) * _viewToSurfaceScaleX);
-            var dy = (float)((e.TotalY - _lastPanTotalY) * _viewToSurfaceScaleY);
-            _lastPanTotalX = e.TotalX;
-            _lastPanTotalY = e.TotalY;
+            case SKTouchAction.Moved:
+                if (_dragging && _dragHandle != DragHandle.None)
+                {
+                    var dx = e.Location.X - _lastTouchPoint.X;
+                    var dy = e.Location.Y - _lastTouchPoint.Y;
+                    _lastTouchPoint = e.Location;
+                    _cropAtGestureStart = _cropRect;
+                    ApplyPanDelta(dx, dy);
+                    Canvas.InvalidateSurface();
+                }
+                break;
 
-            ApplyPanDelta(dx, dy);
-            Canvas.InvalidateSurface();
-        }
-
-        if (e.StatusType is GestureStatus.Completed or GestureStatus.Canceled)
-        {
-            _dragging = false;
-            _dragHandle = DragHandle.None;
+            case SKTouchAction.Released:
+            case SKTouchAction.Cancelled:
+                _dragging = false;
+                _dragHandle = DragHandle.None;
+                break;
         }
     }
 
@@ -257,37 +243,6 @@ public partial class CropPage : ContentPage
         if (_cropRect.Contains(surfacePoint.X, surfacePoint.Y))
             return DragHandle.Move;
         return DragHandle.None;
-    }
-
-    private void OnPinchUpdated(object? sender, PinchGestureUpdatedEventArgs e)
-    {
-        if (e.Status == GestureStatus.Started)
-        {
-            _cropAtPinchStart = _cropRect;
-            _pinchScaleAccum = 1f;
-            return;
-        }
-
-        if (e.Status == GestureStatus.Running)
-        {
-            var step = (float)e.Scale;
-            if (step <= 0 || float.IsNaN(step) || float.IsInfinity(step))
-                return;
-            _pinchScaleAccum *= step;
-
-            var cx = (float)_cropAtPinchStart.MidX;
-            var cy = (float)_cropAtPinchStart.MidY;
-            var halfW = (float)(_cropAtPinchStart.Width / 2d * _pinchScaleAccum);
-            var halfH = (float)(_cropAtPinchStart.Height / 2d * _pinchScaleAccum);
-            var nl = cx - halfW;
-            var nt = cy - halfH;
-            var nr = cx + halfW;
-            var nb = cy + halfH;
-
-            _cropRect = new SKRect(nl, nt, nr, nb);
-            NormalizeCropRect(80f);
-            Canvas.InvalidateSurface();
-        }
     }
 
     private async void OnCancelClicked(object? sender, EventArgs e)
