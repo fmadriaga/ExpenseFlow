@@ -2,6 +2,7 @@
 
 > **Receipt OCR pipeline + mobile app** — drop a photo, get a parsed expense record.
 
+[![CI](https://github.com/nandomadriaga/ExpenseFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/nandomadriaga/ExpenseFlow/actions/workflows/ci.yml)
 ![.NET](https://img.shields.io/badge/.NET-9.0-512BD4?logo=dotnet)
 ![MAUI](https://img.shields.io/badge/.NET%20MAUI-Android%20%7C%20iOS%20%7C%20Windows-68217A?logo=dotnet)
 ![Azure](https://img.shields.io/badge/Azure-Document%20Intelligence-0078D4?logo=microsoftazure)

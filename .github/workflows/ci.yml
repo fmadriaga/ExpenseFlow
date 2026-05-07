@@ -2,24 +2,63 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
+
+# ExpenseFlow.Mobile targets Android/iOS and requires platform-specific workloads
+# that are not available on ubuntu-latest. Server-side projects are built and
+# tested here; the mobile app is validated locally on Windows/macOS.
 
 jobs:
   build-and-test:
+    name: Build & Test (server-side)
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-dotnet@v4
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.x'
+          dotnet-version: "9.0.x"
 
-      - run: dotnet restore ExpenseFlow.sln
+      - name: Restore
+        run: |
+          dotnet restore src/ExpenseFlow.Domain/ExpenseFlow.Domain.csproj
+          dotnet restore src/ExpenseFlow.Application/ExpenseFlow.Application.csproj
+          dotnet restore src/ExpenseFlow.Infrastructure/ExpenseFlow.Infrastructure.csproj
+          dotnet restore src/ExpenseFlow.Api/ExpenseFlow.Api.csproj
+          dotnet restore src/ExpenseFlow.Worker/ExpenseFlow.Worker.csproj
+          dotnet restore src/ExpenseFlow.Web/ExpenseFlow.Web.csproj
+          dotnet restore tests/ExpenseFlow.Application.Tests/ExpenseFlow.Application.Tests.csproj
+          dotnet restore tests/ExpenseFlow.IntegrationTests/ExpenseFlow.IntegrationTests.csproj
 
-      - run: dotnet build ExpenseFlow.sln -c Release --no-restore
+      - name: Build
+        run: |
+          dotnet build src/ExpenseFlow.Domain/ExpenseFlow.Domain.csproj             -c Release --no-restore
+          dotnet build src/ExpenseFlow.Application/ExpenseFlow.Application.csproj   -c Release --no-restore
+          dotnet build src/ExpenseFlow.Infrastructure/ExpenseFlow.Infrastructure.csproj -c Release --no-restore
+          dotnet build src/ExpenseFlow.Api/ExpenseFlow.Api.csproj                   -c Release --no-restore
+          dotnet build src/ExpenseFlow.Worker/ExpenseFlow.Worker.csproj             -c Release --no-restore
+          dotnet build src/ExpenseFlow.Web/ExpenseFlow.Web.csproj                   -c Release --no-restore
 
-      - run: dotnet test ExpenseFlow.sln -c Release --no-build --logger "console;verbosity=normal"
+      - name: Test
+        run: |
+          dotnet test tests/ExpenseFlow.Application.Tests/ExpenseFlow.Application.Tests.csproj \
+            -c Release --no-build \
+            --logger "console;verbosity=minimal" \
+            --logger "trx;LogFileName=application-tests.trx"
+          dotnet test tests/ExpenseFlow.IntegrationTests/ExpenseFlow.IntegrationTests.csproj \
+            -c Release --no-build \
+            --logger "console;verbosity=minimal" \
+            --logger "trx;LogFileName=integration-tests.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: "**/*.trx"
+          retention-days: 7
