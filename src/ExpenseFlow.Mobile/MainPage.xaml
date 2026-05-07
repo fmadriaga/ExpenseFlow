@@ -30,10 +30,23 @@
             FontSize="18"
             Clicked="OnCaptureClicked" />
 
+        <Button
+            x:Name="PickButton"
+            Text="🖼 Seleccionar imagen"
+            BackgroundColor="Transparent"
+            TextColor="#2563EB"
+            BorderColor="#2563EB"
+            BorderWidth="1.5"
+            CornerRadius="12"
+            Padding="16,12"
+            FontSize="16"
+            Clicked="OnPickClicked" />
+
         <Label
             x:Name="StatusLabel"
             Text=""
-            HorizontalTextAlignment="Center" />
+            HorizontalTextAlignment="Center"
+            MaximumWidthRequest="320" />
 
         <ActivityIndicator
             x:Name="BusyIndicator"

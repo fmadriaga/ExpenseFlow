@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using Plugin.LocalNotification;
 using ExpenseFlow.Mobile.Services;
 using Microsoft.Extensions.Configuration;
-using Plugin.LocalNotification.Maui;
+using SkiaSharp.Views.Maui.Controls.Hosting;
 
 namespace ExpenseFlow.Mobile;
 
@@ -19,16 +19,19 @@ public static class MauiProgram
 			builder.Configuration.AddConfiguration(config);
 		}
 
-		builder
+		var mauiBuilder = builder
 			.UseMauiApp<App>()
-			.UseLocalNotification()
+			.UseSkiaSharp()
 			.ConfigureFonts(fonts =>
 			{
 				fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
 				fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
 			});
 
+#if ANDROID || IOS
+		mauiBuilder.UseLocalNotification();
 		builder.Services.AddLocalNotification();
+#endif
 
 		var apiBaseUrl = builder.Configuration["ExpenseFlow:ApiBaseUrl"] ?? "http://localhost:5000/";
 		builder.Services.AddHttpClient<ExpenseFlowApiClient>(client =>
@@ -37,7 +40,12 @@ public static class MauiProgram
 			client.Timeout = TimeSpan.FromSeconds(10);
 		});
 
-		builder.Services.AddSingleton<InboxUploaderService>();
+		builder.Services.AddHttpClient<InboxUploaderService>(client =>
+		{
+			client.BaseAddress = new Uri(apiBaseUrl);
+			client.Timeout = TimeSpan.FromSeconds(30);
+		});
+		builder.Services.AddSingleton<ImageProcessorService>();
 		builder.Services.AddTransient<MainPage>();
 		builder.Services.AddTransient<HistoryPage>();
 
@@ -53,7 +61,9 @@ internal static class LocalNotificationServiceCollectionExtensions
 {
 	public static IServiceCollection AddLocalNotification(this IServiceCollection services)
 	{
+#if ANDROID || IOS
 		services.AddSingleton(_ => LocalNotificationCenter.Current);
+#endif
 		return services;
 	}
 }
