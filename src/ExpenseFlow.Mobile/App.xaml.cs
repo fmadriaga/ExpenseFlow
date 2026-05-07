@@ -24,7 +24,6 @@ public partial class App : Application
                 IconImageSource = string.Empty,
             });
 
-        MainPage = tabbedPage;
         _tabbedPage = tabbedPage;
     }
 

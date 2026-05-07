@@ -10,14 +10,9 @@
             <skia:SKCanvasView x:Name="Canvas"
                                HorizontalOptions="Fill"
                                VerticalOptions="Fill"
-                               PaintSurface="OnPaintSurface">
-                <skia:SKCanvasView.GestureRecognizers>
-                    <PointerGestureRecognizer PointerPressed="OnPointerPressed"
-                                              PointerReleased="OnPointerReleased" />
-                    <PanGestureRecognizer PanUpdated="OnPanUpdated" />
-                    <PinchGestureRecognizer PinchUpdated="OnPinchUpdated" />
-                </skia:SKCanvasView.GestureRecognizers>
-            </skia:SKCanvasView>
+                               EnableTouchEvents="True"
+                               PaintSurface="OnPaintSurface"
+                               Touch="OnCanvasTouch" />
         </Grid>
         <Grid Grid.Row="1"
               BackgroundColor="#99000000"
