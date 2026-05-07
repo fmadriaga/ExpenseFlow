@@ -116,8 +116,24 @@ public partial class HistoryPage : ContentPage
         _pollingTask = null;
     }
 
+    private async void OnTicketTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is not Frame frame || frame.BindingContext is not DocumentSummary summary)
+            return;
+
+        var services = Handler?.MauiContext?.Services;
+        if (services is null) return;
+
+        var apiClient = services.GetService<ExpenseFlowApiClient>();
+        if (apiClient is null) return;
+
+        var detailPage = new DetailPage(summary.Id, apiClient);
+        await Navigation.PushAsync(detailPage);
+    }
+
     private void NotifyForCompletedDocuments(IEnumerable<DocumentSummary> documents)
     {
+#if ANDROID || IOS
         foreach (var document in documents)
         {
             if ((document.OcrStatus is "Success" or "Failed") && _notifiedIds.Add(document.Id))
@@ -135,6 +151,7 @@ public partial class HistoryPage : ContentPage
                     });
             }
         }
+#endif
     }
 }
 

@@ -32,6 +32,9 @@
                                BackgroundColor="White"
                                CornerRadius="10"
                                HasShadow="False">
+                            <Frame.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnTicketTapped" />
+                            </Frame.GestureRecognizers>
                             <VerticalStackLayout Spacing="6">
                                 <Label Text="{Binding MerchantName, TargetNullValue='Sin nombre'}"
                                        FontAttributes="Bold"
